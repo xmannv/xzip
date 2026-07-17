@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>XZip Updates</title>
+    <link>https://xmannv.github.io/xzip/appcast.xml</link>
+    <description>XZip - Compression App for macOS</description>
+    <language>en</language>
+    <item>
+      <title>Version 1.0.0 (Build 1)</title>
+      <link>https://github.com/xmannv/xzip/releases/tag/v1.0.0-1</link>
+      <sparkle:version>1</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <description><![CDATA[
+        <p><h2>What's New</h2></p>
+<p>feat: initial XZIP monorepo</p>
+<p><a href="https://github.com/xmannv/xzip/releases/tag/v1.0.0-1">View details on GitHub</a></p>
+      ]]></description>
+      <pubDate>Fri, 17 Jul 2026 08:14:39 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/xmannv/xzip/releases/download/v1.0.0-1/XZip-1.0.0.dmg" sparkle:version="1" sparkle:shortVersionString="1.0.0" length="7850411" type="application/octet-stream" sparkle:edSignature="EpYw2zC/ASvAb1jC0jpJ3vEhgxBjmv6G8pMOxPEAy73bnVxsrz4Ed3pYd2cNw4Ae68Mtf5z4PWSjdyo0S6yqDg==" />
+    </item>
+  </channel>
+</rss>
