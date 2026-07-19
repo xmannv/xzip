@@ -115,9 +115,10 @@ struct ArchiveService: Sendable {
 
     func list(archive: URL, password: String?) async throws -> [XZIPCore.ArchiveEntry] {
         if let cached = listingCache.cached(for: archive) { return cached }
+        let generation = listingCache.currentGeneration()
         let engine = try engineFactory.engine(forArchive: archive)
         let entries = try await engine.list(archive: archive, password: password)
-        listingCache.store(entries, for: archive)
+        listingCache.store(entries, for: archive, generation: generation)
         return entries
     }
 
@@ -129,24 +130,29 @@ struct ArchiveService: Sendable {
     // MARK: - Editing (add / delete / rename entries)
 
     func add(files: [URL], to archive: URL, password: String?, workingDirectory: URL? = nil) async throws {
+        defer { listingCache.invalidate(for: archive) }
         try await editor.add(files: files, to: archive, password: password, workingDirectory: workingDirectory)
     }
 
     func addViaRepack(files: [URL], to archive: URL, onStep: @escaping @Sendable (RepackStep) -> Void) async throws {
+        defer { listingCache.invalidate(for: archive) }
         try await editor.addViaRepack(files: files, to: archive, onStep: onStep)
     }
 
     func delete(entries: [String], from archive: URL, password: String?) async throws {
+        defer { listingCache.invalidate(for: archive) }
         try await editor.delete(entries: entries, from: archive, password: password)
     }
 
     func rename(pairs: [(entry: String, newName: String)], in archive: URL, password: String?) async throws {
+        defer { listingCache.invalidate(for: archive) }
         try await editor.rename(pairs: pairs, in: archive, password: password)
     }
 
     /// Update one entry's data in place, preserving its archive path (used by
     /// Edit & Save Back). The edited file lives at `workingDirectory`/`entryPath`.
     func update(entry entryPath: String, from workingDirectory: URL, in archive: URL, password: String?) async throws {
+        defer { listingCache.invalidate(for: archive) }
         try await editor.update(entry: entryPath, from: workingDirectory, in: archive, password: password)
     }
 
@@ -169,12 +175,12 @@ struct ArchiveService: Sendable {
     }
 
     /// Thread-safe listing cache keyed by (archive path, modification date).
-    /// Mutating an archive (add/delete/rename) bumps its mtime, so the next
-    /// listing misses and re-reads — the cache is self-invalidating, no explicit
-    /// purge needed.
+    /// Mutation methods also invalidate explicitly because filesystem mtime can
+    /// remain unchanged briefly after an in-place archive update.
     final class ListingCache: @unchecked Sendable {
         private let lock = NSLock()
         private var entriesByPath: [String: (mtime: Date, entries: [XZIPCore.ArchiveEntry])] = [:]
+        private var generation: UInt64 = 0
 
         func cached(for url: URL) -> [XZIPCore.ArchiveEntry]? {
             guard let mtime = Self.modificationDate(of: url) else { return nil }
@@ -183,15 +189,31 @@ struct ArchiveService: Sendable {
             return hit.entries
         }
 
-        func store(_ entries: [XZIPCore.ArchiveEntry], for url: URL) {
+        func currentGeneration() -> UInt64 {
+            lock.lock(); defer { lock.unlock() }
+            return generation
+        }
+
+        func store(
+            _ entries: [XZIPCore.ArchiveEntry],
+            for url: URL,
+            generation expectedGeneration: UInt64
+        ) {
             guard let mtime = Self.modificationDate(of: url) else { return }
             lock.lock(); defer { lock.unlock() }
+            guard generation == expectedGeneration else { return }
             // Bound the cache so a long session browsing many archives can't grow
             // it without limit (each entry can hold a 100k-item listing).
             if entriesByPath.count >= 32, let evict = entriesByPath.keys.first {
                 entriesByPath.removeValue(forKey: evict)
             }
             entriesByPath[url.path] = (mtime, entries)
+        }
+
+        func invalidate(for url: URL) {
+            lock.lock(); defer { lock.unlock() }
+            generation &+= 1
+            entriesByPath.removeValue(forKey: url.path)
         }
 
         private static func modificationDate(of url: URL) -> Date? {

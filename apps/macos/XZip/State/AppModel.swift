@@ -754,8 +754,9 @@ final class AppModel {
     }
 
     /// Reload the open archive's entries from disk (after edits).
-    func refreshEntries() {
-        guard let url = currentArchive?.url else { return }
+    @discardableResult
+    func refreshEntries() -> Task<Void, Never> {
+        guard let url = currentArchive?.url else { return Task {} }
         // Fall back to a Keychain vault entry saved for this archive so a
         // remembered password unlocks it without prompting again.
         if password.isEmpty, let saved = service.savedPassword(for: vaultKey(for: url)) {
@@ -765,7 +766,7 @@ final class AppModel {
         listingGeneration += 1
         let generation = listingGeneration
         isLoadingEntries = true
-        Task {
+        return Task {
             defer {
                 // Only the most recent listing clears the flag: a stale task that
                 // finishes after the user switched archives must not turn off the
@@ -775,13 +776,13 @@ final class AppModel {
             }
             do {
                 let entries = try await service.list(archive: url, password: pwd)
-                // Ignore stale results: the user may have switched archives while
-                // this (possibly slow) listing was still in flight.
-                guard self.currentArchive?.url == url else { return }
+                // Ignore stale results: the user may have switched archives or
+                // started a newer refresh while this listing was still in flight.
+                guard self.listingGeneration == generation, self.currentArchive?.url == url else { return }
                 // Map + folder-synthesis is O(n) over the listing; run it off the
                 // main actor so a 100k-entry archive doesn't stall the UI.
                 let ui = await Task.detached { ModelMapping.uiEntries(from: entries) }.value
-                guard self.currentArchive?.url == url else { return }
+                guard self.listingGeneration == generation, self.currentArchive?.url == url else { return }
                 self.archiveEntries = ui
                 // Keep the sidebar metadata (count + lock badge) in sync.
                 if let index = self.openArchives.firstIndex(where: { $0.url == url }) {
@@ -789,7 +790,7 @@ final class AppModel {
                     self.openArchives[index].isEncrypted = entries.contains { $0.isEncrypted }
                 }
             } catch let error as ArchiveEngineError {
-                guard self.currentArchive?.url == url else { return }
+                guard self.listingGeneration == generation, self.currentArchive?.url == url else { return }
                 switch error {
                 case .passwordRequired, .wrongPassword:
                     // Encrypted archive: prompt for the password (mockup 3a)
@@ -799,7 +800,7 @@ final class AppModel {
                     self.errorMessage = error.localizedDescription
                 }
             } catch {
-                guard self.currentArchive?.url == url else { return }
+                guard self.listingGeneration == generation, self.currentArchive?.url == url else { return }
                 self.errorMessage = error.localizedDescription
             }
         }
