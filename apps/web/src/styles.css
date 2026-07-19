@@ -1,0 +1,1741 @@
+@import 'tailwindcss';
+@theme {
+  --color-ink: #111217;
+  --color-paper: #fbfbfd;
+  --color-blue: #0a84ff;
+  --font-sans: 'Avenir Next', 'SF Pro Display', ui-sans-serif, sans-serif;
+}
+:root {
+  color: #111217;
+  background: #fbfbfd;
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  /* 404 page colors (themed; router.tsx uses inline styles referencing these). */
+  --nf-bg: #fbfbfd;
+  --nf-fg: #1d1d1f;
+  --nf-muted: #86868b;
+}
+* {
+  box-sizing: border-box;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 50% 0, #eef6ff 0, transparent 28rem), #fbfbfd;
+  color: #111217;
+}
+/* Dark-theme base: without this the root/body stay light, so overscroll and any
+   area behind the content flash white in dark mode. Colors match the landing's
+   own dark palette (:root[data-theme='dark'] .landing-root). */
+:root[data-theme='dark'] {
+  color: #f5f5f7;
+  background: #101013;
+  --nf-bg: #101013;
+  --nf-fg: #f5f5f7;
+  --nf-muted: #a1a1a6;
+}
+:root[data-theme='dark'] body {
+  background: #101013;
+  color: #f5f5f7;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button,
+a {
+  outline-offset: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *:before,
+  *:after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+/* XZIP Landing v3 */
+.landing-root {
+  --bg: #fbfbfd;
+  --tx: #1d1d1f;
+  --tx2: #6e6e73;
+  --tx3: #86868b;
+  --card: #f5f5f7;
+  --line: #00000014;
+  --line2: #ececf0;
+  --seg: #ebebee;
+  --chipbg: #fff;
+  --chipbd: #d2d2d7;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--tx);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+:root[data-theme='dark'] .landing-root {
+  --bg: #101013;
+  --tx: #f5f5f7;
+  --tx2: #a1a1a6;
+  --tx3: #98989d;
+  --card: #1c1c1f;
+  --line: #ffffff1f;
+  --line2: #2c2c30;
+  --seg: #26262a;
+  --chipbg: #26262a;
+  --chipbd: #3a3a3e;
+}
+.landing-root * {
+  box-sizing: border-box;
+}
+.landing-root a {
+  color: inherit;
+}
+/* Design uses content-box inline styles: max-width 1200px is the CONTENT width,
+   the 32px side padding sits outside it. With border-box that means 1264px. */
+.landing-container {
+  max-width: 1264px;
+  margin: auto;
+  padding-inline: 32px;
+}
+.landing-nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding-block: 18px;
+  font-size: 14px;
+  color: #424245;
+}
+:root[data-theme='dark'] .landing-root .landing-nav {
+  color: var(--tx2);
+}
+.nav-spacer {
+  flex: 1;
+}
+/* Keep the header icon buttons snug together, not spread by the nav gap. */
+.nav-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.landing-logo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--tx);
+}
+.landing-logo > i {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: linear-gradient(#4da3ff, #0a5cff);
+}
+.landing-logo > i b {
+  position: absolute;
+  left: 19%;
+  top: 24%;
+  width: 62%;
+  height: 14%;
+  border-radius: 9px;
+  background: #fff;
+}
+.landing-logo > i b:nth-child(2) {
+  left: 29%;
+  top: 44%;
+  width: 42%;
+  opacity: 0.8;
+}
+.landing-logo > i b:nth-child(3) {
+  left: 39%;
+  top: 64%;
+  width: 22%;
+  opacity: 0.6;
+}
+.landing-logo strong {
+  font-size: 19px;
+}
+.landing-logo.small > i {
+  width: 20px;
+  height: 20px;
+}
+.landing-logo.small strong {
+  font-size: 13px;
+}
+.theme-toggle {
+  border: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--seg);
+  cursor: pointer;
+}
+/* Circular icon buttons in the header (theme toggle + GitHub link). */
+.nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--seg);
+  color: var(--tx2);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+.nav-icon svg {
+  fill: currentColor;
+}
+a.nav-icon:hover {
+  color: var(--tx);
+  background: var(--line);
+}
+.pill,
+.github-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 99px;
+  font-weight: 600;
+}
+.pill.primary {
+  padding: 14px 30px;
+  background: #0a84ff;
+  color: #fff;
+}
+.pill.compact {
+  padding: 8px 18px;
+  font-size: 13px;
+}
+.github-badge {
+  gap: 8px;
+  padding: 12px 20px;
+  border: 1px solid var(--chipbd);
+}
+.github-badge svg {
+  fill: currentColor;
+}
+.github-badge i {
+  color: #f5a623;
+  font-style: normal;
+}
+.landing-hero {
+  text-align: center;
+  padding: 76px 32px 0;
+  border-bottom: 1px solid var(--line);
+}
+.landing-hero h1 {
+  font-size: clamp(52px, 7.5vw, 80px);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+.landing-hero h1 span,
+.landing-cta h2 span {
+  color: #0a84ff;
+}
+.landing-hero > p {
+  max-width: 600px;
+  margin: 22px auto 0;
+  font-size: 20px;
+  line-height: 1.5;
+  color: var(--tx2);
+}
+.hero-ctas {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 30px;
+}
+.landing-hero > small {
+  display: block;
+  margin-top: 14px;
+  color: var(--tx2);
+}
+.hero-preview {
+  position: relative;
+  width: 900px;
+  max-width: 94%;
+  margin: 64px auto 0;
+}
+.badge {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-style: normal;
+  font-weight: 800;
+  box-shadow: 0 12px 30px #0003;
+}
+.badge.pdf {
+  font-size: 12px;
+  left: -30px;
+  top: -26px;
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
+  background: #ff453a;
+  transform: rotate(-10deg);
+  box-shadow: 0 12px 30px #ff453a59;
+}
+.badge.png {
+  font-size: 11px;
+  right: -32px;
+  top: 128px;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: #30d158;
+  transform: rotate(9deg);
+  box-shadow: 0 12px 30px #30d15859;
+}
+.badge.rar {
+  font-size: 10px;
+  left: 60px;
+  top: -52px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #af52de;
+  transform: rotate(7deg);
+  box-shadow: 0 12px 30px #af52de59;
+}
+.badge.seven {
+  font-size: 10px;
+  right: 80px;
+  top: -38px;
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  background: #ff9f0a;
+  transform: rotate(-8deg);
+  box-shadow: 0 12px 30px #ff9f0a59;
+}
+.hero-archive,
+.demo-window {
+  overflow: hidden;
+  text-align: left;
+  color: #1d1d1f;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 30px 90px #0003;
+}
+.hero-archive {
+  border-radius: 14px 14px 0 0;
+}
+.demo-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 50px;
+  padding: 12px 16px;
+  font-size: 13px;
+  background: #f5f5f7;
+}
+.demo-toolbar b {
+  font-weight: 600;
+}
+.landing-lights {
+  display: flex;
+  gap: 8px;
+}
+.landing-lights i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+.landing-lights i:nth-child(2) {
+  background: #febc2e;
+}
+.landing-lights i:nth-child(3) {
+  background: #28c840;
+}
+.archive-title {
+  display: grid;
+  grid-template-columns: 26px auto;
+  column-gap: 10px;
+}
+.archive-title > i {
+  grid-row: 1/3;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  align-self: center;
+  background: linear-gradient(180deg, #4da3ff, #0a84ff);
+  color: #fff;
+  border-radius: 7px;
+  font-size: 8px;
+  font-weight: 800;
+  font-style: normal;
+}
+.archive-title b {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.archive-title small {
+  font-size: 11px;
+  color: #86868b;
+  white-space: nowrap;
+}
+.demo-toolbar > .archive-title + span,
+.demo-toolbar > b + span {
+  margin-left: auto;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #0000000e;
+  white-space: nowrap;
+}
+.demo-toolbar > .archive-title + strong {
+  margin-left: auto;
+}
+.demo-toolbar > strong {
+  background: #0a84ff;
+  color: #fff;
+  padding: 6px 16px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.landing-root .demo-toolbar > strong {
+  font-weight: 600;
+}
+.demo-head,
+.demo-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 90px 130px;
+  padding: 7px 16px;
+  font-size: 11px;
+}
+.demo-head {
+  color: #86868b;
+  border-top: 1px solid #00000014;
+  border-bottom: 1px solid #0000000f;
+}
+.demo-row {
+  align-items: center;
+  padding-block: 6px;
+  font-size: 13px;
+}
+.demo-row.stripe {
+  background: #f7f7f9;
+}
+.demo-row.selected {
+  background: #0a84ff;
+  color: #fff;
+}
+.demo-row > b {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.demo-row > span {
+  color: #86868b;
+}
+.demo-row.selected > span {
+  color: #ffffffcc;
+}
+.demo-head > span:nth-child(3),
+.demo-row > b + span {
+  text-align: right;
+}
+.demo-head > span:last-child,
+.demo-row > span:last-child {
+  padding-left: 16px;
+  white-space: nowrap;
+}
+.demo-row > i {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 6.5px;
+  font-weight: 800;
+  font-style: normal;
+}
+.landing-showcase,
+.landing-formats,
+.landing-features,
+.landing-security {
+  padding-top: 96px;
+}
+.landing-showcase > header,
+.landing-formats,
+.landing-compare {
+  text-align: center;
+}
+.landing-showcase h2,
+.landing-formats h2,
+.landing-features h2,
+.landing-compare h2 {
+  font-size: clamp(34px, 4.5vw, 48px);
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+.landing-showcase header p,
+.landing-formats > p,
+.landing-compare > p {
+  color: var(--tx2);
+  font-size: 17px;
+}
+.showcase-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  width: max-content;
+  max-width: 100%;
+  margin: 32px auto 0;
+  padding: 3px;
+  border-radius: 20px;
+  background: var(--seg);
+}
+.showcase-tabs button {
+  border: 0;
+  padding: 8px 20px;
+  border-radius: 99px;
+  background: transparent;
+  color: var(--tx2);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.showcase-tabs button[aria-selected='true'] {
+  background: var(--chipbg);
+  color: var(--tx);
+  box-shadow: 0 1px 4px #0003;
+}
+.showcase-stage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 44px;
+  padding: 44px;
+  margin-top: 28px;
+  border-radius: 24px;
+  background: var(--card);
+}
+.showcase-copy {
+  flex: 1 1 280px;
+  text-align: left;
+}
+.showcase-copy > b {
+  color: #0a84ff;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.showcase-copy h3 {
+  font-size: 28px;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  margin: 14px 0;
+}
+.showcase-copy p {
+  color: var(--tx2);
+  font-size: 15.5px;
+  line-height: 1.65;
+}
+.showcase-copy > small {
+  display: block;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--tx3);
+  font-size: 12.5px;
+}
+.showcase-copy > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+.showcase-copy > div > span {
+  font-size: 12px;
+  color: var(--tx3);
+}
+.showcase-copy button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--chipbg);
+  color: var(--tx);
+  box-shadow: 0 1px 4px #0003;
+}
+.showcase-preview {
+  flex: 999 1 600px;
+  min-width: min(620px, 100%);
+  min-height: 470px;
+  display: grid;
+  place-items: center;
+}
+.showcase-preview > .demo-window {
+  width: min(620px, 100%);
+}
+.showcase-preview > .drop-demo {
+  width: min(580px, 100%);
+}
+.showcase-preview > .queue-demo {
+  width: min(520px, 100%);
+}
+.browse-demo > small,
+.demo-window > small {
+  display: block;
+  padding: 8px;
+  text-align: center;
+  color: #86868b;
+  font-size: 11px;
+  border-top: 1px solid #00000014;
+}
+.browse-demo > small {
+  background: #f5f5f7;
+}
+.drop-zones {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+}
+.drop-zones > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 16px;
+  border: 2px dashed #00000033;
+  border-radius: 14px;
+}
+.drop-zones > div:first-child {
+  border-color: #0a84ff80;
+  background: #0a84ff0d;
+}
+.drop-zones i {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #0000000f;
+  color: #6e6e73;
+  font-size: 22px;
+  font-weight: 600;
+  font-style: normal;
+}
+.drop-zones > div:first-child i {
+  background: #0a84ff1f;
+  color: #0a84ff;
+}
+.drop-zones b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.drop-zones small {
+  font-size: 11px;
+  color: #86868b;
+  text-align: center;
+}
+.compress-demo {
+  width: min(440px, 100%) !important;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #fbfbfd;
+}
+.compress-demo > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.compress-demo > div:first-child > b {
+  font-size: 15px;
+}
+.compress-demo > div:first-child > span {
+  font-size: 11px;
+  color: #6e6e73;
+  background: #0000000e;
+  padding: 5px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.compress-meta > b {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6e6e73;
+}
+.compress-meta > em {
+  font-size: 12px;
+  font-weight: 600;
+  font-style: normal;
+  color: #0a84ff;
+}
+.segmented {
+  padding: 2px;
+  background: #0000000d;
+  border-radius: 9px;
+  font-size: 13px;
+}
+.segmented > * {
+  flex: 1;
+  padding: 6px;
+  text-align: center;
+  color: #6e6e73;
+}
+.segmented > b {
+  background: #fff;
+  border-radius: 7px;
+  box-shadow: 0 1px 3px #0000001f;
+  color: #1d1d1f;
+  font-weight: 600;
+}
+.slider-row {
+  gap: 12px;
+}
+.slider-row small {
+  font-size: 11px;
+  color: #86868b;
+}
+.slider {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #0a84ff 70%, #0000001f 70%);
+  position: relative;
+}
+.slider > i {
+  position: absolute;
+  left: 70%;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px #0000004d;
+}
+.compress-demo > .encrypt-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #00000014;
+  border-radius: 10px;
+}
+.encrypt-card > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.encrypt-card b {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+.encrypt-card small {
+  font-size: 11px;
+  color: #86868b;
+}
+.encrypt-card code {
+  flex: 1;
+  padding: 7px 12px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  background: #f5f5f7;
+  border: 1px solid #0000001a;
+  border-radius: 8px;
+}
+.encrypt-card button {
+  border: 0;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #0a84ff;
+  background: #0a84ff1a;
+}
+.compress-demo > .demo-actions {
+  justify-content: flex-end;
+  gap: 10px;
+}
+.demo-actions > span {
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: #0000000e;
+}
+.demo-actions > b {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 18px;
+  border-radius: 999px;
+  color: #fff;
+  background: #0a84ff;
+}
+.toggle {
+  display: inline-block;
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+  border-radius: 99px;
+  background: #30d158;
+}
+.toggle::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+}
+.queue-demo {
+  background: #28282b;
+  color: #f5f5f7;
+}
+.queue-demo .demo-toolbar {
+  background: none;
+  border-bottom: 1px solid #ffffff14;
+}
+.queue-demo .demo-toolbar > b + span {
+  padding: 0;
+  background: none;
+  font-size: 12px;
+  color: #98989d;
+}
+.queue-row,
+.queue-done {
+  padding: 14px 16px;
+  background: #1d1d20;
+}
+.queue-row {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  gap: 8px 10px;
+  align-items: center;
+  border-bottom: 1px solid #ffffff0f;
+}
+.queue-row > b {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 6.5px;
+  font-weight: 800;
+}
+.queue-row > span {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.queue-row > small {
+  font-size: 12px;
+  color: #98989d;
+  white-space: nowrap;
+}
+.queue-row > i {
+  grid-column: 1 / -1;
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: #ffffff1f;
+}
+.queue-row > i > i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: #0a84ff;
+}
+.queue-done {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.queue-done > b {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #30d158;
+  color: #fff;
+  font-size: 11px;
+}
+.queue-done > span {
+  flex: 1;
+  font-size: 13px;
+  color: #98989d;
+}
+.queue-done > em {
+  font-size: 12px;
+  font-style: normal;
+  color: #5eb0ff;
+}
+.finder-demo {
+  display: flex;
+  font-size: 13px;
+}
+.finder-demo > div {
+  width: 225px;
+  padding: 5px;
+  border-radius: 12px;
+  background: #fafafc;
+  color: #1d1d1f;
+  box-shadow: 0 16px 48px #0004;
+}
+.finder-demo > div + div {
+  margin: 64px 0 0 -6px;
+}
+.finder-demo span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+}
+.finder-demo em {
+  font-style: normal;
+  color: #86868b;
+}
+.finder-demo .active {
+  background: #0a84ff;
+  color: #fff;
+  border-radius: 6px;
+}
+.finder-demo .active em {
+  color: #fff;
+}
+.finder-demo i {
+  display: block;
+  height: 1px;
+  margin: 5px 10px;
+  background: #00000014;
+}
+.finder-demo small {
+  display: block;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #86868b;
+}
+.landing-formats > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  max-width: 880px;
+  margin: 32px auto;
+}
+.landing-formats span {
+  padding: 9px 18px;
+  border: 1px solid var(--chipbd);
+  border-radius: 99px;
+  font-size: 13.5px;
+  font-weight: 600;
+  background: var(--chipbg);
+}
+.landing-formats .both {
+  background: #0a84ff;
+  color: #fff;
+  border-color: #0a84ff;
+}
+.landing-features h2 {
+  text-align: center;
+  margin-bottom: 36px;
+}
+.landing-features > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+.landing-features article {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 28px;
+  border-radius: 18px;
+  background: var(--card);
+}
+.landing-features article > i {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #0a84ff1f;
+  color: #0a84ff;
+  font-size: 15px;
+  font-weight: 700;
+  font-style: normal;
+}
+.landing-features h3 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+.landing-features p {
+  margin: 0;
+  color: var(--tx2);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.landing-security > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 56px;
+  align-items: center;
+  padding: 64px;
+  border-radius: 28px;
+  background: #1d1d1f;
+  color: #fff;
+}
+.landing-security > div > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.landing-security > div > div:first-child > b {
+  font-size: 12px;
+  color: #5eb0ff;
+  letter-spacing: 0.06em;
+}
+.landing-security h2 {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 44px);
+}
+.landing-security p {
+  margin: 0;
+  color: #a1a1a6;
+  font-size: 16px;
+  line-height: 1.65;
+}
+.security-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  border-radius: 16px;
+  background: #fbfbfd;
+  color: #1d1d1f;
+  box-shadow: 0 24px 60px #0006;
+}
+.security-card > div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.security-card b {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+.security-card small {
+  font-size: 11px;
+  font-weight: 600;
+  color: #86868b;
+}
+.security-card code {
+  flex: 1;
+  padding: 9px 12px;
+  font-size: 14px;
+  letter-spacing: 3px;
+  background: #f5f5f7;
+  border: 1px solid #0000001a;
+  border-radius: 8px;
+}
+.security-card button {
+  border: 0;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0a84ff;
+  background: #0a84ff1a;
+  cursor: pointer;
+}
+.security-card p {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #ff9f0a1f;
+  color: #7a4a00;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.security-card p i {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: #ff9f0a;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  font-style: normal;
+}
+.landing-compare {
+  /* content-box 1060px in the design + 64px side padding */
+  max-width: 1124px;
+  margin: auto;
+  padding: 96px 32px 0;
+}
+.comparison {
+  overflow-x: auto;
+  margin-top: 32px;
+  border: 1px solid var(--line2);
+  border-radius: 18px;
+  text-align: left;
+}
+.comparison-head,
+.comparison-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) repeat(5, 92px);
+  min-width: 660px;
+  padding: 13px 24px;
+  align-items: center;
+}
+.comparison-head {
+  background: var(--card);
+  color: var(--tx2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.comparison-head b {
+  color: #0a84ff;
+}
+.comparison-row {
+  border-top: 1px solid var(--line2);
+  font-size: 15px;
+}
+.comparison-row > b {
+  font-weight: 400;
+}
+.comparison-row > span {
+  font-size: 13px;
+  color: #a1a1a6;
+}
+.comparison-head > *:not(:first-child),
+.comparison-row > *:not(:first-child) {
+  text-align: center;
+}
+.comparison-row strong {
+  color: #30d158;
+}
+.landing-compare > small {
+  display: block;
+  margin-top: 12px;
+  color: var(--tx3);
+  font-size: 12px;
+}
+.landing-cta {
+  text-align: center;
+  padding: 130px 32px 110px;
+}
+.landing-cta h2 {
+  margin: 0;
+  font-size: clamp(40px, 5.5vw, 60px);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.landing-cta > div {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 24px;
+}
+.landing-cta .pill.primary {
+  padding: 15px 34px;
+  font-size: 17px;
+}
+.landing-cta .github-badge {
+  padding: 15px 30px;
+}
+.landing-cta > small {
+  font-size: 12px;
+  color: var(--tx3);
+}
+.landing-footer {
+  border-top: 1px solid var(--line);
+}
+.landing-footer > .landing-container {
+  padding-block: 22px;
+  color: var(--tx3);
+}
+.landing-footer small a {
+  font-weight: 600;
+}
+.landing-footer > div > div {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.landing-footer > div > div > span {
+  flex: 1;
+}
+.landing-footer small {
+  display: block;
+  margin-top: 12px;
+}
+@media (max-width: 760px) {
+  .landing-nav > a:not(:first-child):not(.pill) {
+    display: none;
+  }
+  .landing-hero {
+    padding: 52px 20px 0;
+  }
+  .landing-hero h1 {
+    font-size: clamp(42px, 13vw, 60px);
+  }
+  .demo-head,
+  .demo-row {
+    grid-template-columns: 28px 1fr 70px;
+  }
+  .demo-head span:last-child,
+  .demo-row span:last-child {
+    display: none;
+  }
+  .showcase-stage {
+    /* Tighter chrome + smaller gap so the demo content isn't squeezed into a
+       narrow column on mobile. */
+    padding: 20px;
+    gap: 24px;
+  }
+  .showcase-preview {
+    min-height: 340px;
+  }
+  /* Finder demo uses two fixed-width overlapping panels that don't fit a phone;
+     let it scroll horizontally instead of compressing. */
+  .finder-demo {
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .finder-demo::-webkit-scrollbar {
+    display: none;
+  }
+  .finder-demo > div {
+    flex: 0 0 auto;
+  }
+  .drop-zones {
+    flex-direction: column;
+  }
+  .drop-zones > div {
+    padding: 20px;
+  }
+  .landing-security > div {
+    padding: 32px;
+  }
+  .landing-footer > div > div {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 460px) {
+  .landing-container {
+    padding-inline: 20px;
+  }
+  .landing-nav .pill {
+    display: none;
+  }
+  .landing-hero h1 br {
+    display: none;
+  }
+  .hero-ctas {
+    flex-direction: column;
+  }
+  /* Stack the CTA buttons full-width instead of cramming them side by side. */
+  .landing-cta > div {
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 300px;
+    margin-inline: auto;
+  }
+  .landing-cta > div > .pill,
+  .landing-cta > div > .github-badge {
+    width: 100%;
+  }
+  .badge {
+    display: none;
+  }
+  .showcase-tabs button {
+    padding: 7px 10px;
+  }
+  .showcase-preview {
+    min-width: 100%;
+    min-height: 300px;
+  }
+  .landing-features > div {
+    grid-template-columns: 1fr;
+  }
+  .landing-footer > div > div > span {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-root * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Geometry locked to docs/design/XZIP Landing v3.dc.html */
+.landing-nav {
+  box-sizing: border-box;
+  height: 70px;
+  padding-block: 18px;
+  gap: 16px 32px;
+}
+.landing-hero {
+  box-sizing: border-box;
+  height: 706px;
+}
+.landing-showcase {
+  box-sizing: border-box;
+  height: 860px;
+}
+.landing-formats {
+  box-sizing: border-box;
+  height: 342px;
+}
+.landing-features {
+  box-sizing: border-box;
+  height: 617px;
+}
+.landing-security {
+  box-sizing: border-box;
+  height: 375px;
+  padding-top: 0;
+  margin-top: 96px;
+}
+.landing-security > div {
+  height: 375px;
+}
+.landing-compare {
+  box-sizing: border-box;
+  height: 599px;
+}
+.landing-cta {
+  box-sizing: border-box;
+  height: 485px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+.landing-cta > div {
+  margin: 0;
+}
+/* Below the desktop breakpoint the locked section heights don't fit the wrapped
+   content and overflow (or clip, for the overflow:hidden hero), colliding with
+   the next section. Let them size to their content in the 761–1039px gap; the
+   ≤760px block below already resets everything for mobile. */
+@media (min-width: 761px) and (max-width: 1039px) {
+  .landing-hero,
+  .landing-showcase,
+  .landing-formats,
+  .landing-features,
+  .landing-security,
+  .landing-security > div,
+  .landing-compare,
+  .landing-cta {
+    height: auto;
+  }
+}
+@media (max-width: 760px) {
+  /*
+   * Mobile: let sections size to their content instead of the fixed desktop
+   * heights, which were tuned for a single 390px width and clipped/overflowed
+   * at every other mobile width (360/414/430px).
+   */
+  .landing-nav {
+    height: auto;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 12px;
+    padding-block: 16px;
+  }
+  .nav-spacer {
+    display: none;
+  }
+  /* Clean app-bar: logo sits left at its natural width. */
+  .landing-nav > a:first-child {
+    width: auto;
+  }
+  /* Section links are reachable by scrolling; hide them to declutter. */
+  .landing-nav > a:not(:first-child):not(.pill) {
+    display: none;
+  }
+  /* Push the icon group + download pill to the right edge. */
+  .landing-nav .nav-icons {
+    margin-left: auto;
+  }
+  .landing-hero,
+  .landing-showcase,
+  .landing-formats,
+  .landing-features,
+  .landing-security,
+  .landing-security > div,
+  .landing-compare,
+  .landing-cta {
+    height: auto;
+  }
+  .landing-showcase,
+  .landing-formats,
+  .landing-features {
+    padding-inline: 32px;
+  }
+  .landing-security {
+    padding: 0 32px;
+  }
+  .landing-security > div {
+    padding: 28px;
+    /* Single column: the desktop auto-fit minmax(320px) track was wider than
+       the mobile viewport, clipping the heading and card on the right. */
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .landing-security h2 {
+    font-size: 30px;
+  }
+  /* Tabs scroll horizontally instead of cramping when they exceed the width. */
+  .showcase-tabs {
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .showcase-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .showcase-tabs button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .landing-cta {
+    padding-block: 88px;
+  }
+  /* Footer: center the logo/links row and copyright for a tidy mobile stack. */
+  .landing-footer > .landing-container {
+    align-items: center;
+    text-align: center;
+  }
+  .landing-footer > div > div {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px 20px;
+  }
+  .landing-footer > div > div > span {
+    display: none;
+  }
+}
+@media (max-width: 460px) {
+  .landing-nav .pill {
+    display: inline-flex;
+  }
+  .landing-container {
+    padding-inline: 32px;
+  }
+}
+.landing-hero {
+  overflow: hidden;
+}
+.hero-ctas {
+  gap: 18px;
+}
+.hero-ctas .pill-primary {
+  padding: 14px 30px;
+}
+.landing-hero > small {
+  font-size: 12px;
+  line-height: 15px;
+  color: var(--tx3);
+}
+.demo-window {
+  box-sizing: border-box;
+}
+.hero-preview .demo-window {
+  height: 210px;
+}
+.landing-footer > .landing-container {
+  box-sizing: content-box;
+  padding: 22px 32px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 12.5px;
+}
+.landing-footer small {
+  margin-top: 0;
+  font-size: 11px;
+}
+@media (max-width: 760px) {
+  .hero-preview .demo-window {
+    height: auto;
+  }
+  .landing-footer > .landing-container {
+    box-sizing: border-box;
+  }
+}
+
+/* Typography parity: Tailwind preflight resets headings to inherited 400. */
+.landing-root h1,
+.landing-root h2,
+.landing-root h3,
+.landing-root strong {
+  font-weight: 700;
+}
+.landing-hero h1 {
+  letter-spacing: -0.02em;
+}
+.landing-showcase h2,
+.landing-formats h2,
+.landing-features h2,
+.landing-compare h2 {
+  line-height: normal;
+  letter-spacing: -0.02em;
+}
+.landing-security h2 {
+  font-weight: 700;
+  line-height: normal;
+  letter-spacing: -0.02em;
+}
+.landing-cta h2 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* ── Document pages (Privacy / Support / Release notes) ───────────────── */
+/* Shares the v3 chrome + tokens; article geometry follows docs/design. */
+.doc {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 64px 32px 96px;
+  min-height: 60vh;
+}
+.doc h1 {
+  margin: 0 0 8px;
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--tx);
+}
+.doc-intro {
+  margin: 0 0 40px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--tx2);
+}
+.doc-body {
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--tx2);
+}
+.doc-body h2 {
+  margin: 36px 0 12px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--tx);
+}
+.doc-body p {
+  margin: 0 0 20px;
+}
+.doc-body strong {
+  color: var(--tx);
+}
+.doc-body a {
+  color: #0a84ff;
+}
+.doc-note {
+  color: var(--tx2);
+}
+/* Support FAQ cards */
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.faq-card {
+  padding: 20px 22px;
+  border-radius: 14px;
+  background: var(--card);
+}
+.faq-q {
+  margin-bottom: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--tx);
+}
+.faq-a {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--tx2);
+}
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 40px;
+}
+.pill.ghost {
+  padding: 12px 24px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  color: var(--tx);
+}
+/* Release notes rows */
+.release-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 24px;
+  padding: 28px 0;
+  border-top: 1px solid var(--line);
+}
+.release-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.release-version {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--tx);
+}
+.release-date {
+  font-size: 12.5px;
+  color: var(--tx2);
+}
+.release-tag {
+  width: fit-content;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--tx2);
+  background: var(--card);
+}
+.release-tag.latest {
+  color: #fff;
+  background: #0a84ff;
+}
+.release-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.release-item {
+  display: flex;
+  gap: 10px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--tx2);
+}
+.release-kind {
+  height: fit-content;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.kind-new {
+  color: #0a84ff;
+  background: rgba(10, 132, 255, 0.12);
+}
+.kind-fixed {
+  color: #30a14e;
+  background: rgba(48, 209, 88, 0.14);
+}
+.kind-improved {
+  color: #b25000;
+  background: rgba(255, 159, 10, 0.16);
+}
+/* Skeleton placeholders while releases load for the first time */
+.release-row.skeleton .release-items {
+  gap: 12px;
+}
+.skeleton-bar,
+.skeleton-pill {
+  display: block;
+  height: 13px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--card) 25%,
+    rgba(128, 128, 128, 0.16) 37%,
+    var(--card) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+.skeleton-bar {
+  width: 100%;
+}
+.skeleton-bar.w-90 {
+  width: 90%;
+}
+.skeleton-bar.w-80 {
+  width: 80%;
+}
+.skeleton-bar.w-60 {
+  width: 60%;
+}
+.skeleton-bar.w-40 {
+  width: 40%;
+}
+.skeleton-pill {
+  width: 54px;
+  height: 18px;
+  border-radius: 999px;
+}
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar,
+  .skeleton-pill {
+    animation: none;
+  }
+}
+@media (max-width: 640px) {
+  .doc {
+    padding: 44px 24px 72px;
+  }
+  .doc h1 {
+    font-size: 34px;
+  }
+  .release-row {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .release-meta {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
+}

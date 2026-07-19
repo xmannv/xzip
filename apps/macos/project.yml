@@ -1,0 +1,289 @@
+name: XZip
+options:
+  bundleIdPrefix: com.codetay
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+  knownRegions:
+    - en
+    - vi
+    - Base
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: "7E6Z9B4F2H"
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    SWIFT_STRICT_CONCURRENCY: complete
+    # Let the compiler extract SwiftUI/`String(localized:)` literals into the
+    # String Catalog so every user-facing string is localizable.
+    SWIFT_EMIT_LOC_STRINGS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+
+packages:
+  XZIPCore:
+    path: Packages/XZIPCore
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
+
+targets:
+  XZip:
+    type: application
+    platform: macOS
+    scheme:
+      testTargets:
+        - XZipTests
+    sources:
+      - path: XZip
+    resources:
+      - path: XZip/Resources/Assets.xcassets
+    # The bundled CLI binaries (7zz, zstd, …) are .gitignored, and XcodeGen
+    # skips gitignored files when enumerating a resources group — even as a
+    # folder reference — so they never landed in the app bundle. Copy them in
+    # with an explicit build-phase script instead, which is gitignore-agnostic
+    # and runs before code signing so the nested binaries get sealed in.
+    postCompileScripts:
+      - name: Copy bundled binaries (7zz, …)
+        script: |
+          set -e
+          SRC="$SRCROOT/Resources/bin"
+          DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Resources/bin"
+          mkdir -p "$DEST"
+          if [ -d "$SRC" ]; then
+            cp -f "$SRC/"* "$DEST/" 2>/dev/null || true
+          fi
+        outputFiles:
+          - $(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Resources/bin/7zz
+    dependencies:
+      - package: XZIPCore
+      - package: Sparkle
+        product: Sparkle
+      - target: FinderSync
+      - target: QuickLook
+      - target: ShareExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codetay.xzip
+        PRODUCT_NAME: XZip
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleDisplayName: XZip
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 CodeTay"
+        CODE_SIGN_ENTITLEMENTS: XZip/XZip.entitlements
+        REGISTER_APP_GROUPS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES
+    info:
+      path: XZip/Info.plist
+      properties:
+        CFBundleDisplayName: XZip
+        # Wire the bundle version to the centralized settings above so a bump
+        # in MARKETING_VERSION / CURRENT_PROJECT_VERSION reaches the built app
+        # (xcodegen writes literal defaults otherwise, and keys present in
+        # INFOPLIST_FILE win over generated ones).
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "15.0"
+        CFBundleLocalizations:
+          - en
+          - vi
+        NSHighResolutionCapable: true
+        # Sparkle auto-update. SUFeedURL points at the appcast deployed to
+        # GitHub Pages by .github/workflows/update-appcast.yml. SUPublicEDKey
+        # is the EdDSA public key; the private half lives in the login
+        # Keychain (scripts/generate_sparkle_keys.sh).
+        SUFeedURL: "https://xmannv.github.io/xzip/appcast.xml"
+        SUPublicEDKey: "9/ryeUN9ZJfVWkorOqHJTK1l1jkQy6Gtp1x7dxNjmN8="
+        SUEnableAutomaticChecks: true
+        SUScheduledCheckInterval: 86400
+        # Register the xzip:// scheme used by the Finder/Share extensions.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.codetay.xzip
+            CFBundleURLSchemes:
+              - xzip
+        # Declare the archive document types XZip can open.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Archive
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.zip-archive
+              - org.7-zip.7-zip-archive
+              - public.tar-archive
+              - org.gnu.gnu-zip-archive
+              - public.archive
+              - com.rarlab.rar-archive
+              - public.iso-image
+              - public.cpio-archive
+              - com.apple.xip
+              - com.sun.java-archive
+              - org.idpf.epub-container
+              - com.codetay.xzip.cab
+              - com.codetay.xzip.deb
+              - com.codetay.xzip.rpm
+              - com.codetay.xzip.lzh
+              - com.codetay.xzip.wim
+              - com.codetay.xzip.chm
+              - com.codetay.xzip.arj
+              - com.codetay.xzip.udf
+              - com.codetay.xzip.squashfs
+              - com.codetay.xzip.z-archive
+              - com.codetay.xzip.lzma
+              - com.codetay.xzip.cbz
+              - com.codetay.xzip.pax
+        # Extract-only containers routed through 7zz that have no system UTI —
+        # declared here so LaunchServices can match them by extension.
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.codetay.xzip.cab
+            UTTypeDescription: Windows Cabinet archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [cab] }
+          - UTTypeIdentifier: com.codetay.xzip.deb
+            UTTypeDescription: Debian package
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [deb] }
+          - UTTypeIdentifier: com.codetay.xzip.rpm
+            UTTypeDescription: RPM package
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [rpm] }
+          - UTTypeIdentifier: com.codetay.xzip.lzh
+            UTTypeDescription: LZH archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [lzh, lha] }
+          - UTTypeIdentifier: com.codetay.xzip.wim
+            UTTypeDescription: Windows Imaging archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [wim] }
+          - UTTypeIdentifier: com.codetay.xzip.chm
+            UTTypeDescription: Compiled HTML Help
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [chm] }
+          - UTTypeIdentifier: com.codetay.xzip.arj
+            UTTypeDescription: ARJ archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [arj] }
+          - UTTypeIdentifier: com.codetay.xzip.udf
+            UTTypeDescription: UDF disk image
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [udf] }
+          - UTTypeIdentifier: com.codetay.xzip.squashfs
+            UTTypeDescription: SquashFS image
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [squashfs, sqfs] }
+          - UTTypeIdentifier: com.codetay.xzip.z-archive
+            UTTypeDescription: Unix Compress archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [z] }
+          - UTTypeIdentifier: com.codetay.xzip.lzma
+            UTTypeDescription: LZMA archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [lzma] }
+          - UTTypeIdentifier: com.codetay.xzip.cbz
+            UTTypeDescription: Comic Book archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [cbz] }
+          - UTTypeIdentifier: com.codetay.xzip.pax
+            UTTypeDescription: PAX archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification: { public.filename-extension: [pax] }
+
+  FinderSync:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: FinderSync
+    dependencies:
+      - package: XZIPCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codetay.xzip.FinderSync
+        PRODUCT_NAME: XZipFinder
+        CODE_SIGN_ENTITLEMENTS: FinderSync/FinderSync.entitlements
+        REGISTER_APP_GROUPS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: YES
+    info:
+      path: FinderSync/Info.plist
+      properties:
+        CFBundleDisplayName: XZip Finder
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.FinderSync
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).FinderSync
+
+  QuickLook:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: QuickLook
+    dependencies:
+      - package: XZIPCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codetay.xzip.QuickLook
+        PRODUCT_NAME: XZipQuickLook
+        CODE_SIGN_ENTITLEMENTS: QuickLook/QuickLook.entitlements
+        REGISTER_APP_GROUPS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: YES
+    info:
+      path: QuickLook/Info.plist
+      properties:
+        CFBundleDisplayName: XZip Quick Look
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.quicklook.preview
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PreviewProvider
+          QLSupportedContentTypes:
+            - public.zip-archive
+            - org.7-zip.7-zip-archive
+            - public.tar-archive
+            - com.rarlab.rar-archive
+          QLIsDataBasedPreview: true
+
+  ShareExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: ShareExtension
+    dependencies:
+      - package: XZIPCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codetay.xzip.ShareExtension
+        PRODUCT_NAME: XZipShare
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/ShareExtension.entitlements
+        REGISTER_APP_GROUPS: YES
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: YES
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Compress with XZip
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 100
+
+  XZipTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: XZipTests
+      - path: QuickLook/PreviewPresentation.swift
+    dependencies:
+      - target: XZip
+      - package: XZIPCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.codetay.xzip.tests
+        GENERATE_INFOPLIST_FILE: YES
+        # Host the tests in the app so @testable import XZip resolves.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/XZip.app/Contents/MacOS/XZip"
+        BUNDLE_LOADER: "$(TEST_HOST)"

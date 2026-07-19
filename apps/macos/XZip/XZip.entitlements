@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Developer ID distribution (outside the App Store), hardened runtime.
+      The app is NOT sandboxed: it spawns the bundled `7zz` child process and
+      needs broad file access to compress/extract anywhere the user chooses.
+      This mirrors how Keka and BetterZip ship their Developer ID builds.
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+    <!-- JIT/unsigned executable memory stays OFF (the bundled 7zz is a plain
+         child process, not JITed code loaded in-process). -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <false/>
+    <!-- Library validation is intentionally NOT disabled (secure default): the
+         only non-Apple code loaded in-process is Sparkle.framework and XZIPCore,
+         both signed with this app's Team ID during the Developer ID archive, and
+         7zz runs as a separate process. VERIFY on a signed + notarized build that
+         the app launches AND "Check for Updates" works (that loads Sparkle's
+         framework + spawns its XPC helper); if the nested helpers fail
+         validation, deep-re-sign them with the Team ID rather than re-adding
+         com.apple.security.cs.disable-library-validation. -->
+    <key>com.apple.application-identifier</key>
+    <string>7E6Z9B4F2H.com.codetay.xzip</string>
+    <key>keychain-access-groups</key>
+    <array>
+        <string>7E6Z9B4F2H.com.codetay.xzip</string>
+    </array>
+    <!-- Shared with the Finder/QuickLook/Share extensions so they can read
+         preferences (e.g. showFinderContextMenu). Must be registered on the
+         Apple Developer portal for Developer ID / notarized distribution. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.codetay.xzip</string>
+    </array>
+</dict>
+</plist>

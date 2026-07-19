@@ -1,0 +1,59 @@
+# Build
+.build/
+DerivedData/
+build/
+
+# XcodeGen output (regenerated from project.yml)
+*.xcodeproj
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Bundled binaries (fetched by scripts/fetch_binaries.sh, not committed)
+Resources/bin/7zz
+Resources/bin/7zz_x64
+Resources/bin/7zz_arm64
+Resources/bin/zstd
+Resources/bin/brotli
+Resources/bin/xz
+vendor/
+
+# macOS
+.DS_Store
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+
+# SwiftPM
+Packages/*/.build/
+.swiftpm/
+
+# JavaScript / Turborepo / Cloudflare
+node_modules/
+.turbo/
+dist/
+.output/
+.wrangler/
+.dev.vars
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Agent tooling and scratch UI
+.superpowers/
+.serena/
+.graphifyignore
+graphify-out/
+
+# Local documentation and design references
+docs/
+artifacts/
+
+# Notarization / secrets
+*.p8
+*.p12
+notarization_credentials.sh
+release/
+XZIP_SwiftUI_Design_Kit/

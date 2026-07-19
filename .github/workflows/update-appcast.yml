@@ -1,0 +1,59 @@
+name: Update Appcast
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  update-appcast:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate appcast.xml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python .github/scripts/generate_appcast.py
+
+      - name: Prepare deployment directory
+        run: |
+          mkdir -p gh-pages-deploy
+          cp appcast.xml gh-pages-deploy/
+
+      - name: Deploy to GitHub Pages
+        # Pinned to a commit SHA (v3.9.3), not a mutable tag: this third-party
+        # action deploys the Sparkle appcast that drives auto-updates, so a
+        # retagged/compromised @v3 could ship a malicious update feed.
+        uses: peaceiris/actions-gh-pages@4c82c7262fae7c69e985454e2c815482877cc12a # v3.9.3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./gh-pages-deploy
+          publish_branch: gh-pages
+          keep_files: false
+          enable_jekyll: false
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'Update appcast.xml from release ${{ github.event.release.tag_name }}'
+
+      - name: Summary
+        run: |
+          echo "✅ Appcast updated and deployed to GitHub Pages" >> $GITHUB_STEP_SUMMARY
+          echo "📦 Release: ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 Appcast URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/appcast.xml" >> $GITHUB_STEP_SUMMARY

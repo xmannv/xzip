@@ -1,0 +1,15 @@
+/* No comment provided by engineer. */
+"Archive appears to be corrupted: %@" = "Kho lưu trữ có vẻ bị hỏng: %@";
+
+/* No comment provided by engineer. */
+"Incorrect password." = "Mật khẩu không đúng.";
+
+/* No comment provided by engineer. */
+"This archive is password protected." = "Kho lưu trữ này được bảo vệ bằng mật khẩu.";
+
+/* No comment provided by engineer. */
+"Unsafe entry path blocked: %@" = "Đã chặn đường dẫn mục không an toàn: %@";
+
+/* No comment provided by engineer. */
+"Unsupported format: %@" = "Định dạng không được hỗ trợ: %@";
+
