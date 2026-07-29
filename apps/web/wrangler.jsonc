@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xzip-web",
+  "compatibility_date": "2026-07-17",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  // Points at our own server entry, not the package default
+  // (@tanstack/react-start/server-entry), so the security headers in
+  // src/server.ts actually run. The default entry would bypass it entirely.
+  "main": "./src/server.ts"
+}

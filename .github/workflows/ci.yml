@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only by default. Nothing here publishes artifacts or writes to the repo,
+# so no write scopes are granted.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: XZIPCore package tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      # XZIP_REQUIRE_7ZZ=1 below makes a missing binary a hard failure, so this
+      # step must succeed for the suite to mean anything. fetch_binaries.sh
+      # verifies the upstream tarball's SHA-256 before unpacking.
+      - name: Fetch bundled binaries
+        run: bash apps/macos/scripts/fetch_binaries.sh
+
+      - name: Test
+        env:
+          # Without this, every integration test that needs 7zz would XCTSkip and
+          # the job would still report success — a green dashboard over a suite
+          # that never ran.
+          XZIP_REQUIRE_7ZZ: '1'
+        run: swift test --package-path apps/macos/Packages/XZIPCore
+
+  app:
+    name: App target build + tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Fetch bundled binaries
+        run: bash apps/macos/scripts/fetch_binaries.sh
+
+      - name: Generate project
+        working-directory: apps/macos
+        run: xcodegen generate
+
+      # KeychainPasswordStoreHostedTests is excluded here, not skipped silently:
+      # the Data Protection Keychain requires a signed host with real
+      # entitlements, which a hosted runner without a Developer ID cert cannot
+      # produce. scripts/build_release.sh runs the full suite signed before any
+      # release is cut, so that class is still gated — just not on this runner.
+      - name: Test
+        working-directory: apps/macos
+        run: |
+          xcodebuild test \
+            -project XZip.xcodeproj \
+            -scheme XZip \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -resultBundlePath "$RUNNER_TEMP/XZipTests.xcresult" \
+            -skip-testing:XZipTests/KeychainPasswordStoreHostedTests \
+            CODE_SIGNING_ALLOWED=NO
+
+  web:
+    name: Web tests + typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # TODO: pin to a commit SHA like update-appcast.yml does for
+      # peaceiris/actions-gh-pages. Left as a tag because this job only runs
+      # tests and publishes nothing, so the blast radius of a retagged action is
+      # much smaller than the appcast deploy step.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+
+      # --frozen-lockfile so CI fails on a stale lockfile instead of silently
+      # resolving different versions than a developer has locally.
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: apps/web
+        run: bun run typecheck
+
+      - name: Test
+        working-directory: apps/web
+        run: bun run test

@@ -1,0 +1,121 @@
+name: Update Appcast
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # Allow manual trigger
+
+# No workflow-level permissions: every job declares only what it needs, so a
+# future job added here starts from no access instead of inheriting write scopes.
+permissions: {}
+
+jobs:
+  update-appcast:
+    runs-on: ubuntu-latest
+    # Only the push to gh-pages needs write access. `pages: write`/`id-token: write`
+    # are deliberately absent: deployment goes through peaceiris/actions-gh-pages
+    # with GITHUB_TOKEN, which uses neither the Pages API nor OIDC.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install verification dependencies
+        # Required by generate_appcast.py for the EdDSA check. With
+        # REQUIRE_VERIFICATION=1 a missing 'cryptography' aborts the run instead
+        # of silently skipping verification, so this step is load-bearing.
+        run: python -m pip install --disable-pip-version-check 'cryptography==46.0.3'
+
+      - name: Resolve release tag
+        # The tag reaches the shell through env, never through ${{ }} inside the
+        # script body: a tag is attacker-controllable text and direct
+        # interpolation would let it break out and run arbitrary commands.
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="$EVENT_TAG"
+          if [ -z "$TAG" ]; then
+            # Manual dispatch has no release payload. Mirror the script's own
+            # selection rule (newest published, non-prerelease) so the DMG we
+            # verify is the DMG that ends up in the feed.
+            TAG="$(gh release list --exclude-drafts --exclude-pre-releases \
+              --limit 1 --json tagName --jq '.[0].tagName')"
+          fi
+          if [ -z "$TAG" ]; then
+            echo "No published release found to build an appcast from." >&2
+            exit 1
+          fi
+          printf 'tag=%s\n' "$TAG" >> "$GITHUB_OUTPUT"
+        id: release
+
+      - name: Download release DMG
+        # Verification is only real if the bytes are present: without a local DMG
+        # the size and EdDSA checks have nothing to compare against.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dmg
+          gh release download "$TAG" --pattern '*.dmg' --dir dmg --clobber
+          ls -l dmg
+
+      - name: Generate appcast.xml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DMG_DIR: dmg
+          # The Sparkle public key is not a secret (it also ships in the app's
+          # Info.plist, which the script falls back to when this is empty).
+          SU_PUBLIC_ED_KEY: ${{ vars.SU_PUBLIC_ED_KEY }}
+          # Turns every "cannot verify, skipping" warning into a hard failure so
+          # an unverified DMG can never be published as an update.
+          REQUIRE_VERIFICATION: '1'
+        run: |
+          set -euo pipefail
+          python .github/scripts/generate_appcast.py
+
+      - name: Prepare deployment directory
+        run: |
+          set -euo pipefail
+          mkdir -p gh-pages-deploy
+          cp appcast.xml gh-pages-deploy/
+
+      - name: Deploy to GitHub Pages
+        # Pinned to a commit SHA (v3.9.3), not a mutable tag: this third-party
+        # action deploys the Sparkle appcast that drives auto-updates, so a
+        # retagged/compromised @v3 could ship a malicious update feed.
+        uses: peaceiris/actions-gh-pages@4c82c7262fae7c69e985454e2c815482877cc12a # v3.9.3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./gh-pages-deploy
+          publish_branch: gh-pages
+          keep_files: false
+          enable_jekyll: false
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'Update appcast.xml from release ${{ steps.release.outputs.tag }}'
+
+      - name: Summary
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+          {
+            echo "✅ Appcast updated and deployed to GitHub Pages"
+            echo "📦 Release: $TAG"
+            echo "🔗 Appcast URL: https://${REPO_OWNER}.github.io/${REPO_NAME}/appcast.xml"
+          } >> "$GITHUB_STEP_SUMMARY"

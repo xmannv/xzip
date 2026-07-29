@@ -1,0 +1,15 @@
+{
+  "originHash" : "d323a91aae29130faab00f6fea7e32bdf67a46a3e5d87353a15e1c1bb297bafd",
+  "pins" : [
+    {
+      "identity" : "swift-archive",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/marcprux/swift-archive.git",
+      "state" : {
+        "revision" : "48fddd77a1d8301ce04e0d7c093fcf0867fa1ff8",
+        "version" : "3.8.9"
+      }
+    }
+  ],
+  "version" : 3
+}

@@ -1,0 +1,72 @@
+name: Feature request
+description: Suggest an improvement to the XZIP macOS app or website.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing an idea. Please describe the problem first so we can evaluate the best solution.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Area
+      description: Which part of XZIP would this improve?
+      options:
+        - macOS app
+        - Finder extension
+        - Quick Look extension
+        - Share extension
+        - Website
+        - Release or updater
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to accomplish, and what makes it difficult today?
+      placeholder: Describe the workflow and who benefits from it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe how you imagine the feature working in XZIP.
+      placeholder: A clear description of the desired behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: How do you solve this today? Mention other approaches you considered.
+      placeholder: Existing workaround or alternative design.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add mockups or examples if useful. Do not include private archives or sensitive data.
+      placeholder: Optional screenshots, links, or format details.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checklist
+      options:
+        - label: I searched existing issues and did not find the same request.
+          required: true
+        - label: I have not included personal, confidential, or security-sensitive data.
+          required: true

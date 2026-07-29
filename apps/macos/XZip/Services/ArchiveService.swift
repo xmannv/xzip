@@ -1,0 +1,458 @@
+import Foundation
+import XZIPCore
+import XZIPDomain
+
+/// App-facing facade over `XZIPCore`: resolves the bundled engine, runs
+/// compress/extract/list/test, and exposes the password & preset repositories.
+///
+/// Design: a Facade + composition root for the backend. Views talk to
+/// `AppModel`, `AppModel` talks to this one service, and this service is the
+/// only place that knows about `ArchiveEngineFactory`, `BinaryLocator`, etc.
+/// This keeps the SwiftUI layer free of backend wiring and easy to preview.
+struct ArchiveService: Sendable {
+    let engineFactory: any ArchiveEngineProviding
+    let editor: any ArchiveEditing
+    let passwordStore: any PasswordStoring
+    let presetStore: PresetStore
+    let commentService: ArchiveCommentService
+    let splitJoiner: SplitArchiveJoiner
+    /// Caches the most recent successful listing per archive, keyed by
+    /// modification date, so the many redundant `7zz l` passes (open → list,
+    /// pre-extract conflict scan, the zip-slip guard inside every extract, each
+    /// Quick Look / drag-out) collapse to a single listing per archive revision.
+    /// A default value keeps it out of the memberwise initializer.
+    let listingCache = ListingCache()
+    /// Caches the content-detected format (magic bytes) per archive revision so
+    /// capability checks (can this be modified / edited?) don't re-read the header
+    /// on every SwiftUI render.
+    let formatCache = FormatCache()
+    /// Serializes the in-place rewrites of one archive.
+    ///
+    /// Owned here rather than by `AppModel` so taking the turn is part of
+    /// performing a mutation instead of a convention each call site has to
+    /// remember: every method below that rewrites an archive claims the gate
+    /// itself, so there is no ungated route to the editor. A default value keeps
+    /// it out of the memberwise initializer, and the reference type means the
+    /// struct's copies all share one gate.
+    let mutationGate = ArchiveMutationGate()
+
+    // MARK: - Construction
+
+    /// Production wiring: locate `7zz` inside the app bundle's Resources/bin.
+    static func live() -> ArchiveService {
+        let binDir = Bundle.main.resourceURL?.appendingPathComponent("bin")
+            ?? Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/bin")
+        let locator = BinaryLocator(searchDirectories: [binDir])
+        let policy = ArchiveResourcePolicy.production
+        let processController = ProcessController(
+            policy: policy,
+            permits: LocalProcessPermitPool(
+                limit: policy.scheduling.globalProcessLimit
+            )
+        )
+        return ArchiveService(
+            engineFactory: ArchiveEngineFactory.makeDefault(
+                runner: processController,
+                locator: locator,
+                policy: policy
+            ),
+            editor: SevenZipArchiveEditor(
+                runner: processController,
+                locator: locator
+            ),
+            passwordStore: KeychainPasswordStore(),
+            presetStore: PresetStore(),
+            commentService: ArchiveCommentService(runner: processController),
+            splitJoiner: SplitArchiveJoiner()
+        )
+    }
+
+    // MARK: - Archive comment (mockup 4a)
+
+    func readComment(for archive: URL) async throws -> String {
+        // ZIP is read/written via the `zip`/`unzip` tools. Other formats that
+        // carry a comment (RAR) are read-only, via the 7zz engine.
+        if ArchiveCommentService.canEditComment(for: archive) {
+            return try await commentService.readComment(for: archive)
+        }
+        let engine = try engineFactory.engine(forArchive: archive)
+        return try await engine.readComment(archive: archive, password: nil)
+    }
+
+    /// Write the archive comment.
+    ///
+    /// Gated like the other mutations: `zip -z` rewrites the archive's central
+    /// directory in place, so a comment write racing an add / delete lands in the
+    /// same temp-then-swap conflict and one of the two changes would be lost.
+    func writeComment(
+        _ comment: String,
+        to archive: URL,
+        admission: ArchiveMutationGate.Admission
+    ) async throws {
+        try await gated(archive, admission) { [commentService, listingCache] in
+            defer { listingCache.invalidate(for: archive) }
+            try await commentService.writeComment(comment, to: archive)
+        }
+    }
+
+    func canEditComment(for archive: URL) -> Bool {
+        ArchiveCommentService.canEditComment(for: archive)
+    }
+
+    // MARK: - Split archives (mockup 4b)
+
+    func detectSplit(part: URL) throws -> SplitArchiveJoiner.DetectionResult? {
+        try splitJoiner.detect(part: part)
+    }
+
+    func joinSplit(parts: [URL], destination: URL) -> AsyncThrowingStream<Double, Error> {
+        Self.fractionStream(from: splitJoiner.join(parts: parts, destination: destination))
+    }
+
+    // MARK: - Operations
+
+    /// Compress `sources` into `destination`, streaming 0...1 progress.
+    func compress(
+        sources: [URL],
+        destination: URL,
+        options: CompressionOptions
+    ) throws -> AsyncThrowingStream<Double, Error> {
+        let validated = try ArchiveComponentValidator.validate(destination.lastPathComponent)
+        let validatedDestination = try ArchivePathContainment.childURL(
+            parent: destination.deletingLastPathComponent(),
+            component: validated
+        )
+        guard validatedDestination.standardizedFileURL == destination.standardizedFileURL else {
+            throw ArchiveNameValidationError.unsafeRelativePath(destination.path)
+        }
+
+        let engine = try engineFactory.engine(for: options.format)
+        let raw = engine.compress(
+            sources: sources,
+            destination: validatedDestination,
+            options: options
+        )
+        return Self.fractionStream(from: raw)
+    }
+
+    /// Extract `archive` into `destination`, streaming 0...1 progress.
+    func extract(
+        archive: URL,
+        destination: URL,
+        options: ExtractionOptions
+    ) throws -> AsyncThrowingStream<Double, Error> {
+        let engine = try engineFactory.engine(forArchive: archive)
+        // No precomputed listing: the engine's zip-slip guard always re-lists
+        // fresh, because a cached (mtime-keyed) listing is TOCTOU-unsafe — a
+        // swapped archive could otherwise smuggle `../` entries past a stale guard.
+        let raw = engine.extract(archive: archive, destination: destination, options: options)
+        return Self.fractionStream(from: raw)
+    }
+
+    /// The content-detected (magic-byte) format of `archive`, cached per revision.
+    /// Capability checks use this instead of the filename so a mislabeled archive
+    /// (e.g. a RAR named `.zip`) is judged by what it actually is — the same way
+    /// the read path routes engines — rather than offered edits 7zz will reject
+    /// and Edit & Save Back would then discard.
+    func detectedFormat(for archive: URL) -> XZIPCore.ArchiveFormat? {
+        if let hit = formatCache.cached(for: archive) { return hit }
+        guard let format = ArchiveFormatDetector.detect(fileAt: archive) else { return nil }
+        formatCache.store(format, for: archive)
+        return format
+    }
+
+    func list(archive: URL, password: String?) async throws -> [XZIPCore.ArchiveEntry] {
+        if let cached = listingCache.cached(for: archive) { return cached }
+        let generation = listingCache.currentGeneration()
+        let engine = try engineFactory.engine(forArchive: archive)
+        let entries = try await engine.list(archive: archive, password: password)
+        listingCache.store(entries, for: archive, generation: generation)
+        return entries
+    }
+
+    func test(archive: URL, password: String?) async throws -> Bool {
+        let engine = try engineFactory.engine(forArchive: archive)
+        return try await engine.test(archive: archive, password: password)
+    }
+
+    // MARK: - Editing (add / delete / rename entries)
+
+    /// Take the archive's turn, then run `body`.
+    ///
+    /// Every mutation funnels through here, which is what makes "a write path
+    /// that forgot to serialize" unrepresentable: the gate is private to this
+    /// service and the editor is only ever reached from inside this closure.
+    /// The policy is the caller's choice because the failure requirements differ
+    /// — a user-driven action prefers an honest "still busy" over queueing work
+    /// the user may no longer want, while a watcher-driven save-back must not be
+    /// dropped (see `ArchiveMutationGate`).
+    private func gated<T: Sendable>(
+        _ archive: URL,
+        _ admission: ArchiveMutationGate.Admission,
+        _ body: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        switch admission {
+        case .refuseIfBusy:
+            return try await mutationGate.claim(archive: archive) { try await body() }
+        case .waitTurn:
+            return try await mutationGate.enqueue(archive: archive) { try await body() }
+        }
+    }
+
+    func add(
+        files: [URL],
+        to archive: URL,
+        password: String?,
+        workingDirectory: URL? = nil,
+        admission: ArchiveMutationGate.Admission
+    ) async throws {
+        try await gated(archive, admission) { [editor, listingCache] in
+            defer { listingCache.invalidate(for: archive) }
+            try await editor.add(
+                files: files,
+                to: archive,
+                password: password,
+                workingDirectory: workingDirectory
+            )
+        }
+    }
+
+    func addViaRepack(
+        files: [URL],
+        to archive: URL,
+        admission: ArchiveMutationGate.Admission,
+        onStep: @escaping @Sendable (RepackStep) -> Void
+    ) async throws {
+        try await gated(archive, admission) { [editor, listingCache] in
+            defer { listingCache.invalidate(for: archive) }
+            // Created inside the turn: the workspace holds a full copy of the
+            // tarball, so a refused mutation should not have paid for it.
+            let workspace = try FileManager.default.url(
+                for: .itemReplacementDirectory,
+                in: .userDomainMask,
+                appropriateFor: archive,
+                create: true
+            )
+            defer { try? FileManager.default.removeItem(at: workspace) }
+            try await editor.addViaRepack(
+                files: files,
+                to: archive,
+                workspace: workspace,
+                onStep: onStep
+            )
+        }
+    }
+
+    func delete(
+        entries: [String],
+        from archive: URL,
+        password: String?,
+        admission: ArchiveMutationGate.Admission
+    ) async throws {
+        try await gated(archive, admission) { [editor, listingCache] in
+            defer { listingCache.invalidate(for: archive) }
+            try await editor.delete(entries: entries, from: archive, password: password)
+        }
+    }
+
+    func rename(
+        pairs: [(entry: String, newName: String)],
+        in archive: URL,
+        password: String?,
+        admission: ArchiveMutationGate.Admission
+    ) async throws {
+        let virtualRoot = URL(fileURLWithPath: "/xzip-archive-root", isDirectory: true)
+
+        func validateRelativePath(_ path: String) throws {
+            let parentPath = (path as NSString).deletingLastPathComponent
+            let validatedLeaf = try ArchiveComponentValidator.validate(
+                (path as NSString).lastPathComponent
+            )
+            let expectedPath = parentPath.isEmpty
+                ? validatedLeaf
+                : "\(parentPath)/\(validatedLeaf)"
+            guard expectedPath == path else {
+                throw ArchiveNameValidationError.unsafeRelativePath(path)
+            }
+            let parent: URL
+            do {
+                parent = try ArchivePathContainment.descendantDirectoryURL(
+                    root: virtualRoot,
+                    relativePath: parentPath
+                )
+            } catch {
+                throw ArchiveNameValidationError.unsafeRelativePath(path)
+            }
+            _ = try ArchivePathContainment.childURL(
+                parent: parent,
+                component: validatedLeaf
+            )
+        }
+
+        for pair in pairs {
+            try validateRelativePath(pair.newName)
+            try validateRelativePath(pair.entry)
+        }
+
+        if let rootPair = pairs.first {
+            let sourceParent = (rootPair.entry as NSString).deletingLastPathComponent
+            let destinationParent = (rootPair.newName as NSString).deletingLastPathComponent
+            guard destinationParent == sourceParent else {
+                throw ArchiveNameValidationError.unsafeRelativePath(rootPair.newName)
+            }
+
+            let sourcePrefix = rootPair.entry + "/"
+            for pair in pairs.dropFirst() {
+                guard pair.entry.hasPrefix(sourcePrefix) else {
+                    throw ArchiveNameValidationError.unsafeRelativePath(pair.newName)
+                }
+                let suffix = pair.entry.dropFirst(rootPair.entry.count)
+                guard pair.newName == rootPair.newName + suffix else {
+                    throw ArchiveNameValidationError.unsafeRelativePath(pair.newName)
+                }
+            }
+        }
+
+        // Validation runs before the turn is taken: an unsafe pair must be
+        // rejected whether or not another mutation happens to hold the archive.
+        try await gated(archive, admission) { [editor, listingCache] in
+            defer { listingCache.invalidate(for: archive) }
+            try await editor.rename(pairs: pairs, in: archive, password: password)
+        }
+    }
+
+    /// Update one entry's data in place, preserving its archive path (used by
+    /// Edit & Save Back). The edited file lives at `workingDirectory`/`entryPath`.
+    func update(
+        entry entryPath: String,
+        from workingDirectory: URL,
+        in archive: URL,
+        password: String?,
+        admission: ArchiveMutationGate.Admission
+    ) async throws {
+        try await gated(archive, admission) { [editor, listingCache] in
+            defer { listingCache.invalidate(for: archive) }
+            try await editor.update(
+                entry: entryPath,
+                from: workingDirectory,
+                in: archive,
+                password: password
+            )
+        }
+    }
+
+    // MARK: - Password vault (Keychain-backed)
+
+    func savedPassword(for archiveKey: String) -> String? {
+        try? passwordStore.password(for: archiveKey)
+    }
+
+    func savePassword(_ password: String, for archiveKey: String) throws {
+        try passwordStore.save(password: password, for: archiveKey)
+    }
+
+    func deletePassword(for archiveKey: String) throws {
+        try passwordStore.delete(for: archiveKey)
+    }
+
+    func vaultKeys() -> [String] {
+        (try? passwordStore.allKeys()) ?? []
+    }
+
+    /// Thread-safe listing cache keyed by (archive path, modification date).
+    /// Mutation methods also invalidate explicitly because filesystem mtime can
+    /// remain unchanged briefly after an in-place archive update.
+    final class ListingCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var entriesByPath: [String: (mtime: Date, entries: [XZIPCore.ArchiveEntry])] = [:]
+        private var generation: UInt64 = 0
+
+        func cached(for url: URL) -> [XZIPCore.ArchiveEntry]? {
+            guard let mtime = Self.modificationDate(of: url) else { return nil }
+            lock.lock(); defer { lock.unlock() }
+            guard let hit = entriesByPath[url.path], hit.mtime == mtime else { return nil }
+            return hit.entries
+        }
+
+        func currentGeneration() -> UInt64 {
+            lock.lock(); defer { lock.unlock() }
+            return generation
+        }
+
+        func store(
+            _ entries: [XZIPCore.ArchiveEntry],
+            for url: URL,
+            generation expectedGeneration: UInt64
+        ) {
+            guard let mtime = Self.modificationDate(of: url) else { return }
+            lock.lock(); defer { lock.unlock() }
+            guard generation == expectedGeneration else { return }
+            // Bound the cache so a long session browsing many archives can't grow
+            // it without limit (each entry can hold a 100k-item listing).
+            if entriesByPath.count >= 32, let evict = entriesByPath.keys.first {
+                entriesByPath.removeValue(forKey: evict)
+            }
+            entriesByPath[url.path] = (mtime, entries)
+        }
+
+        func invalidate(for url: URL) {
+            lock.lock(); defer { lock.unlock() }
+            generation &+= 1
+            entriesByPath.removeValue(forKey: url.path)
+        }
+
+        private static func modificationDate(of url: URL) -> Date? {
+            (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        }
+    }
+
+    /// Thread-safe cache of the content-detected format, keyed by (path, mtime)
+    /// so a replaced file is re-detected. Bounded to avoid unbounded growth.
+    final class FormatCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var byPath: [String: (mtime: Date, format: XZIPCore.ArchiveFormat)] = [:]
+
+        func cached(for url: URL) -> XZIPCore.ArchiveFormat? {
+            guard let mtime = Self.modificationDate(of: url) else { return nil }
+            lock.lock(); defer { lock.unlock() }
+            guard let hit = byPath[url.path], hit.mtime == mtime else { return nil }
+            return hit.format
+        }
+
+        func store(_ format: XZIPCore.ArchiveFormat, for url: URL) {
+            guard let mtime = Self.modificationDate(of: url) else { return }
+            lock.lock(); defer { lock.unlock() }
+            if byPath.count >= 64, let evict = byPath.keys.first {
+                byPath.removeValue(forKey: evict)
+            }
+            byPath[url.path] = (mtime, format)
+        }
+
+        private static func modificationDate(of url: URL) -> Date? {
+            (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        }
+    }
+
+    /// Adapt the engine's `ArchiveProgress` stream into a plain fraction stream
+    /// (what the kit UI expects). Indeterminate updates are dropped.
+    private static func fractionStream(
+        from raw: AsyncThrowingStream<ArchiveProgress, Error>
+    ) -> AsyncThrowingStream<Double, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await progress in raw {
+                        if let fraction = progress.fraction {
+                            continuation.yield(fraction)
+                        }
+                    }
+                    continuation.yield(1.0)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}

@@ -1,0 +1,96 @@
+name: Bug report
+description: Report a reproducible problem in the XZIP macOS app or website.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve XZIP. Search existing issues before submitting a new report.
+
+        **Privacy:** Do not attach archives, logs, screenshots, or filenames containing personal, confidential, or security-sensitive information.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      description: Where did the problem occur?
+      options:
+        - macOS app
+        - Finder extension
+        - Quick Look extension
+        - Share extension
+        - Website
+        - Release or updater
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: XZIP version
+      description: Find the app version in XZIP > About XZIP. For the website, enter the date and approximate time.
+      placeholder: "1.0.0 (1)"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the macOS version and Mac model. For website issues, include the browser and version.
+      placeholder: "macOS 15.5, MacBook Pro (Apple silicon)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the problem and its impact clearly.
+      placeholder: Tell us what you observed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reliable sequence that triggers the problem.
+      placeholder: |
+        1. Open XZIP
+        2. Choose ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Additional context
+      description: Add sanitized logs, screenshots, or archive format details if they help. Remove private filenames and data first.
+      placeholder: Optional sanitized diagnostics or screenshots.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I removed personal, confidential, and security-sensitive data from this report and its attachments.
+          required: true
+        - label: I understand that security vulnerabilities must be reported privately, not in this public issue.
+          required: true

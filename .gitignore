@@ -1,0 +1,76 @@
+# Build
+.build/
+DerivedData/
+build/
+
+# XcodeGen output (regenerated from project.yml)
+*.xcodeproj
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+# Also XcodeGen output: project.yml declares these under `info:`, so every
+# `xcodegen generate` rewrites them wholesale. Tracking them invited edits that
+# were silently discarded on the next generate — project.yml is the only place
+# to change bundle keys. Every build path runs xcodegen first, so a fresh clone
+# gets them before anything reads them.
+apps/macos/XZip/Info.plist
+apps/macos/FinderSync/Info.plist
+apps/macos/QuickLook/Info.plist
+apps/macos/ShareExtension/Info.plist
+
+# Bundled binaries (fetched by scripts/fetch_binaries.sh, not committed).
+# NOTE: a pattern containing a slash is anchored to this file's directory, so
+# `Resources/bin/7zz` only matched <root>/Resources/bin/7zz and never the real
+# path apps/macos/Resources/bin/7zz. The `**/` prefix is what makes it match at
+# any depth.
+**/Resources/bin/
+vendor/
+
+# Signing keys and secrets — never commit
+*.pem
+*.key
+*_ed25519
+*_ed25519.*
+notarization_credentials.sh
+
+# macOS
+.DS_Store
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+
+# SwiftPM
+Packages/*/.build/
+.swiftpm/
+
+# JavaScript / Turborepo / Cloudflare
+node_modules/
+.turbo/
+dist/
+.output/
+.wrangler/
+.dev.vars
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Agent tooling and scratch UI
+.superpowers/
+.serena/
+.graphifyignore
+graphify-out/
+# Holds agent session state and git worktree checkouts (gigabytes, machine-local).
+.claude/
+
+# Local documentation and design references
+docs/
+artifacts/
+
+# Notarization / secrets
+*.p8
+*.p12
+notarization_credentials.sh
+release/
+XZIP_SwiftUI_Design_Kit/
