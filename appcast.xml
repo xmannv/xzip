@@ -1,5 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
   <channel>
     <title>XZip Updates</title>
     <link>https://xmannv.github.io/xzip/appcast.xml</link>
@@ -10,14 +10,12 @@
       <link>https://github.com/xmannv/xzip/releases/tag/v1.0.0-1</link>
       <sparkle:version>1</sparkle:version>
       <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
-      <description><![CDATA[
-        <p><h2>What's New</h2></p>
-<p>fix: refresh archive entries after mutations</p>
-<p><a href="https://github.com/xmannv/xzip/releases/tag/v1.0.0-1">View details on GitHub</a></p>
-      ]]></description>
-      <pubDate>Sun, 19 Jul 2026 17:04:02 +0000</pubDate>
+      <description>&lt;p&gt;&lt;h2&gt;What&amp;#x27;s New&lt;/h2&gt;&lt;/p&gt;
+&lt;p&gt;feat: initialize XZIP monorepo&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://github.com/xmannv/xzip/releases/tag/v1.0.0-1"&gt;View details on GitHub&lt;/a&gt;&lt;/p&gt;</description>
+      <pubDate>Wed, 29 Jul 2026 15:10:09 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <enclosure url="https://github.com/xmannv/xzip/releases/download/v1.0.0-1/XZip-1.0.0.dmg" sparkle:version="1" sparkle:shortVersionString="1.0.0" length="7433371" type="application/octet-stream" sparkle:edSignature="vm/fsKL38f88hEYUs2DzAk++4AbxykoXsC51BHvxhpZj4F52s3I11YofMTiwrGoKm/ZUZIr3Fs24ZDceIGr9Bg==" />
+      <enclosure url="https://github.com/xmannv/xzip/releases/download/v1.0.0-1/XZip-1.0.0.dmg" sparkle:version="1" sparkle:shortVersionString="1.0.0" length="12759977" type="application/octet-stream" sparkle:edSignature="S99C6vBO/qiiN/JPZWoOUT/yF2RMEyt+eS9ijq1G6NDkb06129P3Z3NhpSssPtZImKyDVspT0NQ8DeTNuGj+Bg==" />
     </item>
   </channel>
 </rss>
