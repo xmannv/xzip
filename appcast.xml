@@ -6,16 +6,82 @@
     <description>XZip - Compression App for macOS</description>
     <language>en</language>
     <item>
-      <title>Version 1.0.0 (Build 1)</title>
-      <link>https://github.com/xmannv/xzip/releases/tag/v1.0.0-1</link>
-      <sparkle:version>1</sparkle:version>
-      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <title>Version 1.0.1 (Build 2)</title>
+      <link>https://github.com/xmannv/xzip/releases/tag/v1.0.1-2</link>
+      <sparkle:version>2</sparkle:version>
+      <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
       <description>&lt;p&gt;&lt;h2&gt;What&amp;#x27;s New&lt;/h2&gt;&lt;/p&gt;
-&lt;p&gt;feat: initialize XZIP monorepo&lt;/p&gt;
-&lt;p&gt;&lt;a href="https://github.com/xmannv/xzip/releases/tag/v1.0.0-1"&gt;View details on GitHub&lt;/a&gt;&lt;/p&gt;</description>
-      <pubDate>Wed, 29 Jul 2026 15:10:09 +0000</pubDate>
+&lt;p&gt;fix: password prompting, folder drag-out, app lifecycle, and 7z Quick Look&lt;/p&gt;
+&lt;p&gt;Bump version to 1.0.1 (build 2).&lt;/p&gt;
+&lt;p&gt;Password handling:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Prompt proactively when opening any archive whose listing succeeds but&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;  contains encrypted entries (7z -p, ZIP, RAR without -hp). Previously the&lt;/p&gt;
+&lt;p&gt;  prompt only fired when listing itself failed, so data-encrypted archives&lt;/p&gt;
+&lt;p&gt;  with plaintext headers never asked for a password.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Stop treating a successful listing as proof a password is correct; verify&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;  via a new ArchiveEngine.verifyPassword that tests only the smallest&lt;/p&gt;
+&lt;p&gt;  encrypted entry (7zz t -i@), so wrong passwords are no longer saved to&lt;/p&gt;
+&lt;p&gt;  the Keychain.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Classify password errors on the drag-out/Share/Quick Look extraction path&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;  and raise the prompt instead of a generic error banner.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Defer the password sheet while another sheet owns the window&amp;#x27;s slot and&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;  resume it when the slot frees; previously SwiftUI silently dropped it and&lt;/p&gt;
+&lt;p&gt;  every later prompt queued forever.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Quit with the password prompt still up no longer hangs: Cmd-Q routes&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;  through the delegate, which lowers the prompt before terminate: runs&lt;/p&gt;
+&lt;p&gt;  (AppKit abandons termination while a sheet is attached).&lt;/p&gt;
+&lt;p&gt;Drag-out:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Dragging a folder out of an archive now delivers the folder with its tree&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;  intact. Folders were filtered out entirely; they now expand to their&lt;/p&gt;
+&lt;p&gt;  descendant file entries, and the promise advertises public.folder so&lt;/p&gt;
+&lt;p&gt;  Finder accepts the directory URL.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Quitting after a drag-out no longer deadlocks in&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;  CFPasteboardResolveAllPromisedData: the leftover pasteboard promise is&lt;/p&gt;
+&lt;p&gt;  cleared and scratch deletion moved off the main thread behind&lt;/p&gt;
+&lt;p&gt;  .terminateLater.&lt;/p&gt;
+&lt;p&gt;Lifecycle:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Finder &amp;quot;Open With&amp;quot; brings XZip frontmost in every state: cold launch&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;  (request the default window via the LaunchServices reopen path — the&lt;/p&gt;
+&lt;p&gt;  scene&amp;#x27;s external-event opt-out meant a launch caused by a file open&lt;/p&gt;
+&lt;p&gt;  created no window at all), running-in-background (activate(from:)&lt;/p&gt;
+&lt;p&gt;  transfers focus from Finder where plain activate() is denied), and&lt;/p&gt;
+&lt;p&gt;  window-closed-but-running (recreate the window on every open).&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Fix the item-count mismatch: the extract-to row no longer shows a total&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;  (&amp;quot;N items&amp;quot;) that disagreed with the status bar; sidebar/window-subtitle&lt;/p&gt;
+&lt;p&gt;  counts now match the status bar.&lt;/p&gt;
+&lt;p&gt;Quick Look:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;7z archives preview correctly. LZMA2 (7-Zip&amp;#x27;s default encoding) was&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;  undecodable because swift-archive gates its lzma decoder behind an&lt;/p&gt;
+&lt;p&gt;  off-by-default trait; enable it and link a vendored universal static&lt;/p&gt;
+&lt;p&gt;  liblzma (scripts/build_liblzma.sh, SHA-256-pinned XZ Utils build) since&lt;/p&gt;
+&lt;p&gt;  neither Homebrew nor the SDK provides a universal liblzma.&lt;/p&gt;
+&lt;p&gt;Tests: 282 app + 782 package tests pass, including new coverage for the&lt;/p&gt;
+&lt;p&gt;sheet-slot queue, folder drag-out, data-encrypted listing prompts, and an&lt;/p&gt;
+&lt;p&gt;LZMA2 fixture that fails if the trait regresses.&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://github.com/xmannv/xzip/releases/tag/v1.0.1-2"&gt;View details on GitHub&lt;/a&gt;&lt;/p&gt;</description>
+      <pubDate>Fri, 31 Jul 2026 07:20:34 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <enclosure url="https://github.com/xmannv/xzip/releases/download/v1.0.0-1/XZip-1.0.0.dmg" sparkle:version="1" sparkle:shortVersionString="1.0.0" length="12759977" type="application/octet-stream" sparkle:edSignature="S99C6vBO/qiiN/JPZWoOUT/yF2RMEyt+eS9ijq1G6NDkb06129P3Z3NhpSssPtZImKyDVspT0NQ8DeTNuGj+Bg==" />
+      <enclosure url="https://github.com/xmannv/xzip/releases/download/v1.0.1-2/XZip-1.0.1.dmg" sparkle:version="2" sparkle:shortVersionString="1.0.1" length="12973677" type="application/octet-stream" sparkle:edSignature="e2lnuFjWssqpXjNUHtbLhBsdCGMxevTJ2Yj23dbcZP70VjiGVgfMmepddU3ufTVPLbhrz85FOcDOZ/3cV+dxBg==" />
     </item>
   </channel>
 </rss>
