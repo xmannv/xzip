@@ -15,6 +15,8 @@ export type ReleaseNote = {
   tag: string
   latest: boolean
   items: ReleaseItem[]
+  /** Size in bytes of the release's .dmg asset, when one is attached. */
+  dmgBytes?: number
 }
 
 export type ReleasesState = {
@@ -31,6 +33,7 @@ type GitHubRelease = {
   published_at?: string
   prerelease?: boolean
   draft?: boolean
+  assets?: { name?: string; size?: number }[]
 }
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -86,7 +89,9 @@ function parseItems(body: string | undefined): ReleaseItem[] {
       // it: otherwise an explicit "**Fixed:**" whose remaining wording reads like
       // an improvement (e.g. "**Fixed:** improved retry logic") is mislabeled.
       const label = withoutBullet.match(/^\*\*(.+?)\*\*:?\s*/)
-      const text = (label ? withoutBullet.slice(label[0].length) : withoutBullet).trim()
+      const text = (
+        label ? withoutBullet.slice(label[0].length) : withoutBullet
+      ).trim()
       const kind = (label && labelKind(label[1])) || classify(text)
       return { kind, text }
     })
@@ -112,6 +117,9 @@ export function normalize(releases: GitHubRelease[]): ReleaseNote[] {
       tag: isLatest ? 'LATEST' : release.prerelease ? 'BETA' : 'RELEASE',
       latest: isLatest,
       items: parseItems(release.body),
+      dmgBytes: release.assets?.find((asset) =>
+        asset.name?.toLowerCase().endsWith('.dmg'),
+      )?.size,
     }
   })
 }
@@ -143,6 +151,7 @@ function isReleaseNote(value: unknown): value is ReleaseNote {
     typeof note.date === 'string' &&
     typeof note.tag === 'string' &&
     typeof note.latest === 'boolean' &&
+    (note.dmgBytes === undefined || typeof note.dmgBytes === 'number') &&
     Array.isArray(note.items) &&
     note.items.every((item) => {
       if (typeof item !== 'object' || item === null) return false
@@ -277,4 +286,30 @@ export function useGitHubReleases(repo: string): ReleasesState {
   }, [repo])
 
   return state
+}
+
+export type LatestRelease = {
+  version: string | null
+  size: string | null
+}
+
+/**
+ * Version ("v1.0.2") and installer size ("13 MB") of the latest stable
+ * release. Nulls let callers keep a static fallback while loading or when
+ * the GitHub API is unreachable.
+ */
+export function latestReleaseMeta(releases: ReleaseNote[]): LatestRelease {
+  const latest = releases.find((release) => release.latest)
+  // Tags look like "v1.0.2-3" (a build-number suffix); show only the dotted
+  // version part.
+  const match = latest?.key.match(/^v?(\d+(?:\.\d+)*)/)
+  return {
+    version: match ? `v${match[1]}` : null,
+    // Decimal megabytes, matching how Finder reports file sizes.
+    size: latest?.dmgBytes ? `${Math.round(latest.dmgBytes / 1e6)} MB` : null,
+  }
+}
+
+export function useLatestRelease(repo: string): LatestRelease {
+  return latestReleaseMeta(useGitHubReleases(repo).releases)
 }

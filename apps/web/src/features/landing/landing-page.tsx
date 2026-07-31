@@ -1,11 +1,13 @@
 import { downloadUrl } from '../../content/site-content'
 import { comparisonRows, featureCards, formatGroups } from './landing-data'
 import {
+  GITHUB_REPO,
   GitHubBadge,
   LandingFooter,
   LandingNav,
   useTheme,
 } from './landing-chrome'
+import { useLatestRelease } from './github-releases'
 import {
   ArchivePreviewRows,
   ArchivePreviewTitle,
@@ -51,6 +53,14 @@ function SecurityCard() {
 
 export function LandingPage() {
   const { preference, cycleTheme } = useTheme()
+  const { version, size } = useLatestRelease(GITHUB_REPO)
+  // One caption shared by the hero and the bottom CTA so they never drift.
+  const downloadCaption = (
+    <small>
+      {version ?? 'v1.0.2'} · {size ?? '13 MB'} · macOS 15+ · Apple Silicon
+      &amp; Intel · Notarized
+    </small>
+  )
   return (
     <div className="landing-root" data-testid="landing-root">
       <LandingNav preference={preference} cycleTheme={cycleTheme} />
@@ -76,9 +86,7 @@ export function LandingPage() {
             </a>
             <GitHubBadge />
           </div>
-          <small>
-            macOS 15+ · 12 MB · Apple Silicon &amp; Intel · Notarized
-          </small>
+          {downloadCaption}
           <div className="hero-preview">
             <i className="badge pdf">PDF</i>
             <i className="badge png">PNG</i>
@@ -178,7 +186,7 @@ export function LandingPage() {
             </a>
             <GitHubBadge />
           </div>
-          <small>v1.0 · 12 MB · macOS 15+ · Free &amp; open source</small>
+          {downloadCaption}
         </section>
       </main>
       <LandingFooter />

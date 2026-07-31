@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { classify, normalize, readStored } from './github-releases'
+import {
+  classify,
+  latestReleaseMeta,
+  normalize,
+  readStored,
+} from './github-releases'
 import type { ReleaseNote } from './github-releases'
 
 const REPO = 'owner/xzip'
@@ -47,6 +52,21 @@ describe('normalize', () => {
     expect(notes[0].version).toBe('Launch')
   })
 
+  it('picks the .dmg asset size and ignores other assets', () => {
+    const notes = normalize([
+      {
+        tag_name: 'v1.0.2-3',
+        assets: [
+          { name: 'signature.txt', size: 89 },
+          { name: 'XZip-1.0.2.dmg', size: 12975476 },
+        ],
+      },
+      { tag_name: 'v1.0.1' },
+    ])
+    expect(notes[0].dmgBytes).toBe(12975476)
+    expect(notes[1].dmgBytes).toBeUndefined()
+  })
+
   it('honors an explicit **Fixed:** label over the remaining wording', () => {
     const notes = normalize([
       {
@@ -61,6 +81,27 @@ describe('normalize', () => {
       text: 'improved retry logic',
     })
     expect(notes[0].items[1]).toMatchObject({ kind: 'New' })
+  })
+})
+
+describe('latestReleaseMeta', () => {
+  it('derives version from the tag (dropping a build suffix) and size in MB', () => {
+    const notes = normalize([
+      {
+        tag_name: 'v1.0.2-3',
+        assets: [{ name: 'XZip-1.0.2.dmg', size: 12975476 }],
+      },
+    ])
+    expect(latestReleaseMeta(notes)).toEqual({
+      version: 'v1.0.2',
+      size: '13 MB',
+    })
+  })
+
+  it('returns nulls when nothing is loaded or the tag/asset is missing', () => {
+    expect(latestReleaseMeta([])).toEqual({ version: null, size: null })
+    const notes = normalize([{ name: 'Launch' }])
+    expect(latestReleaseMeta(notes)).toEqual({ version: null, size: null })
   })
 })
 
