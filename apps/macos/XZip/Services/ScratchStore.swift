@@ -78,6 +78,33 @@ final class ScratchStore {
         discardExportDirectory(directory)
     }
 
+    /// Hands the session's directories to the caller for deletion elsewhere, and
+    /// forgets them.
+    ///
+    /// Exists so quitting can delete this tree off the main thread: `removeAll`
+    /// does the work inline, and a recursive delete over a large extracted tree
+    /// stalls the main thread long enough for AppKit to show a beachball. The
+    /// store stops tracking what it returns, so the later `removeAll` backstop in
+    /// `applicationWillTerminate` finds nothing to repeat.
+    ///
+    /// Returns an empty array when nothing was ever minted — `root` is lazy, and
+    /// touching it would create the directory just to delete it.
+    func takeRootsForTermination() -> [URL] {
+        defer {
+            previousPreview = nil
+            exportDirectories.removeAll()
+        }
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        let taken = root
+        // Re-point `root` so anything minted during the quit lands somewhere the
+        // caller is not already deleting.
+        root = parent.appendingPathComponent(
+            "\(Self.rootPrefix)\(UUID().uuidString)",
+            isDirectory: true
+        )
+        return [taken]
+    }
+
     /// Remove everything this session created. Called on quit.
     func removeAll() {
         // `root` is lazy, so touching it here would create the directory just to

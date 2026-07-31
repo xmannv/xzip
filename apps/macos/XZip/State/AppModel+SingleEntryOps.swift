@@ -49,6 +49,35 @@ extension AppModel {
                 ) else { return nil }
                 return FileManager.default.fileExists(atPath: url.path) ? url : nil
             }
+        } catch let error as ArchiveEngineError {
+            switch error {
+            case .wrongPassword, .passwordRequired:
+                // Ask for the password instead of reporting a generic failure.
+                // This path (drag-out, Quick Look, Share, Open With) went
+                // straight to `service.extract`, bypassing the prompt/retry layer
+                // that "Extract to…" gets from `preflightExtraction` — so an
+                // archive whose listing needs no password (ZIP, `7z a -p`) failed
+                // here with no way for the user to supply one.
+                //
+                // No retry closure is armed: the drag session is already over and
+                // the `NSItemProvider` promise has been failed, so re-running this
+                // extraction would deliver files nobody is waiting for. The user
+                // repeats the gesture once the credential is in place.
+                if case .wrongPassword = error {
+                    invalidateSavedPasswordIfMatching(pwd, for: archive)
+                    if let pwd {
+                        credentials.discard(for: archive, ifMatching: pwd)
+                    }
+                }
+                presentPasswordPrompt(
+                    for: archive,
+                    validationContext: .extraction,
+                    error: error
+                )
+            default:
+                errorMessage = error.localizedDescription
+            }
+            return []
         } catch {
             errorMessage = error.localizedDescription
             return []
@@ -76,8 +105,80 @@ extension AppModel {
 
     /// Extract a single entry to a scratch dir and return its file URL.
     /// Used by drag-out to Finder (mockup 3c "kéo ngược file ra Finder").
+    ///
+    /// A folder arrives as the folder itself, tree intact: dragging `Docs/` to the
+    /// Desktop has to deliver `Docs/`, not the files inside it. `extractFiles`
+    /// reports one URL per extracted file, so the folder's own directory is
+    /// recovered from one of them.
     func extractEntryToTemp(_ entry: ArchiveEntry) async -> URL? {
-        await extractEntriesToTemp([entry]).first
+        let exported = await extractEntriesToTemp([entry])
+        guard !exported.isEmpty else { return nil }
+        guard isFolder(entry) else { return exported.first }
+        return folderExportURL(for: entry, among: exported)
+    }
+
+    /// Replaces each selected folder with the file entries beneath it.
+    ///
+    /// Folders were previously dropped outright, so dragging one out extracted
+    /// nothing and the drop failed. Expanding to descendants rather than passing
+    /// the folder's own path to 7zz is what makes this work for every archive: a
+    /// folder row may be synthesized by `ModelMapping.uiEntries(from:)` for a
+    /// directory the archive never recorded, and selecting a path with no entry
+    /// behind it matches nothing.
+    ///
+    /// Nested files are matched by path prefix, mirroring `deleteSelectedEntries`.
+    private func expandFoldersToFileEntries(_ entries: [ArchiveEntry]) -> [ArchiveEntry] {
+        let folders = entries.filter { isFolder($0) }
+        guard !folders.isEmpty else { return entries }
+
+        let prefixes = folders.map { folder -> String in
+            let path = folder.path
+            return path.hasSuffix("/") ? path : path + "/"
+        }
+        var result = entries.filter { !isFolder($0) }
+        var seen = Set(result.map(\.path))
+        for candidate in archiveEntries where !isFolder(candidate) {
+            guard !seen.contains(candidate.path),
+                  prefixes.contains(where: { candidate.path.hasPrefix($0) })
+            else { continue }
+            seen.insert(candidate.path)
+            result.append(candidate)
+        }
+        return result
+    }
+
+    /// The extracted directory corresponding to a dragged folder entry.
+    ///
+    /// Walks an exported file up to the directory named by `entry`, comparing the
+    /// component count rather than testing `hasDirectoryPath` — that only inspects
+    /// the URL string and reads false for a path built by
+    /// `deletingLastPathComponent()`.
+    private func folderExportURL(for entry: ArchiveEntry, among exported: [URL]) -> URL? {
+        let leaf = (ArchiveBrowsing.relativePath(entry) as NSString).lastPathComponent
+        guard !leaf.isEmpty else { return nil }
+        for file in exported {
+            // Walk up to the nearest ancestor named after the folder. Counting
+            // components instead would mix two frames of reference: the entry's
+            // depth is relative to the archive root, while a URL's
+            // `pathComponents` count starts at the filesystem root.
+            //
+            // `hasDirectoryPath` is deliberately not used to confirm the hit — it
+            // only inspects the URL string, and reads false for a path produced by
+            // `deletingLastPathComponent()`. The filesystem is asked instead.
+            var candidate = file.deletingLastPathComponent()
+            while candidate.pathComponents.count > 1 {
+                if candidate.lastPathComponent == leaf {
+                    var isDirectory: ObjCBool = false
+                    let exists = FileManager.default.fileExists(
+                        atPath: candidate.path,
+                        isDirectory: &isDirectory
+                    )
+                    if exists, isDirectory.boolValue { return candidate }
+                }
+                candidate = candidate.deletingLastPathComponent()
+            }
+        }
+        return nil
     }
 
     func discardScratchExport(containing fileURL: URL) {
@@ -93,7 +194,7 @@ extension AppModel {
     /// onto the drag pasteboard or into a Share sheet, and the receiving app may
     /// read them long after the gesture finishes.
     func extractEntriesToTemp(_ entries: [ArchiveEntry]) async -> [URL] {
-        let files = entries.filter { !isFolder($0) }
+        let files = expandFoldersToFileEntries(entries)
         guard !files.isEmpty else { return [] }
         guard let destination = scratch.makeExportDirectory() else {
             errorMessage = String(localized: "Couldn’t prepare a temporary location.")

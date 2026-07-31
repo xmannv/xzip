@@ -96,9 +96,15 @@ struct PathBarView: View {
         .disabled(url == nil)
     }
 
+    /// Describes the selection only. With nothing selected this is empty on
+    /// purpose: it used to show the count of the *current folder level*, sitting
+    /// a few points above the status bar's count of the *whole archive*. Two
+    /// different numbers both labelled "items" in one frame read as a bug (4 vs
+    /// 20 for a folder inside a 20-entry archive), so the archive total is now
+    /// reported in one place — the status bar.
     private var selectionSummary: String {
         let count = model.selectedArchiveEntryIDs.count
-        guard count > 0 else { return String(localized: "\(model.visibleEntries.count) items") }
+        guard count > 0 else { return "" }
         let bytes = ByteCountMath.sum(
             model.archiveEntries.lazy
                 .filter { model.selectedArchiveEntryIDs.contains($0.id) }

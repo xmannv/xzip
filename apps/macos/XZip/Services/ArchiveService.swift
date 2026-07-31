@@ -175,6 +175,17 @@ struct ArchiveService: Sendable {
         return try await engine.test(archive: archive, password: password)
     }
 
+    /// Prove `password` actually decrypts `archive`, throwing `.wrongPassword` /
+    /// `.passwordRequired` when it does not.
+    ///
+    /// Deliberately not routed through `listingCache`: a cached listing is keyed
+    /// by (path, mtime) and carries no password, so serving one here would report
+    /// success for a password that was never checked.
+    func verifyPassword(archive: URL, password: String?) async throws {
+        let engine = try engineFactory.engine(forArchive: archive)
+        try await engine.verifyPassword(archive: archive, password: password)
+    }
+
     // MARK: - Editing (add / delete / rename entries)
 
     /// Take the archive's turn, then run `body`.

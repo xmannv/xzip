@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.1
 import PackageDescription
 
 let package = Package(
@@ -16,7 +16,12 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/marcprux/swift-archive.git",
-            exact: "3.8.9"
+            exact: "3.8.9",
+            // libarchive ships its lzma decoder behind an off-by-default trait.
+            // Without it, listing any LZMA2-compressed 7z (7-Zip's default
+            // encoding) fails — which broke Quick Look for virtually every
+            // real-world .7z; only stored (`Copy`) archives previewed.
+            traits: ["LZMASupport"]
         )
     ],
     targets: [

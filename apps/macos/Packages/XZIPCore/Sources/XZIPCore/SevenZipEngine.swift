@@ -885,7 +885,43 @@ public struct SevenZipEngine: ArchiveEngine {
         )
     }
 
+    /// Checks `password` by decrypting the single smallest encrypted entry,
+    /// rather than the whole archive as `test` does.
+    ///
+    /// This is what makes verifying on open affordable: `7zz t` decrypts every
+    /// entry to check CRCs, so using it here would have made opening a large
+    /// encrypted archive wait for a full decryption pass. Restricting the test to
+    /// one small entry keeps the cost flat in archive size.
+    ///
+    /// Nothing encrypted means there is no password to be wrong, so it returns
+    /// without running a test.
+    public func verifyPassword(archive: URL, password: String?) async throws {
+        let entries = try await list(archive: archive, password: password)
+        // Directories carry no data to decrypt, so testing one proves nothing.
+        let candidates = entries.filter { $0.isEncrypted && !$0.isDirectory }
+        guard let probe = candidates.min(by: { $0.uncompressedSize < $1.uncompressedSize })
+        else { return }
+
+        let binary = try binaryPath()
+        let entryListFile = try SevenZipArchiveEditor.writeEntryListFile([probe.path])
+        defer { try? FileManager.default.removeItem(at: entryListFile) }
+
+        let result = try await processController.runBuffered(ProcessRequest(
+            executable: binary,
+            arguments: ["t", "-i@" + entryListFile.path, "--", archive.path],
+            standardInput: password ?? "",
+            workload: .metadata(volumeIDs: processVolumeIDs(for: [archive]))
+        ))
+        if result.isSuccess { return }
+        throw Self.mapFailure(
+            stderr: result.standardError,
+            stdout: result.standardOutput,
+            hadPassword: !(password ?? "").isEmpty
+        )
+    }
+
     // MARK: - Helpers
+
 
     /// Runs a streaming 7-Zip command, translating `-bsp1` progress lines
     /// (e.g. " 42% 3 - file.txt") into `ArchiveProgress`.

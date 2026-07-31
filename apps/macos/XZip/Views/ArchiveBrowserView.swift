@@ -549,8 +549,15 @@ enum ScratchExportItemProvider {
     static func make(for entry: ArchiveEntry, model: AppModel) -> NSItemProvider {
         let provider = NSItemProvider()
         provider.suggestedName = entry.name
+        // A folder must be advertised as `public.folder`. Registering it as
+        // `public.data` declares the promise delivers a FILE, so Finder rejected
+        // the directory URL handed back and the drop produced nothing — the model
+        // extracting the tree correctly was not enough on its own.
+        let typeIdentifier = model.isFolder(entry)
+            ? UTType.folder.identifier
+            : UTType.data.identifier
         provider.registerFileRepresentation(
-            forTypeIdentifier: UTType.data.identifier,
+            forTypeIdentifier: typeIdentifier,
             fileOptions: [],
             visibility: .all
         ) { completion in

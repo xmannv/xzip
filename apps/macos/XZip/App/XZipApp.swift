@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import XZIPCore
+import os
 
 /// Receives Finder "Open With" / double-click file opens and the extension
 /// `xzip://` commands via the AppKit delegate.
@@ -22,6 +23,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private var pendingURLs: [URL] = []
 
+    /// Field diagnostics for the two behaviours unit tests cannot reach:
+    /// activation on "Open With" and the quit path. Read after a manual test via
+    /// `log show --predicate 'subsystem == "com.codetay.xzip"' --info`.
+    private let lifecycleLog = Logger(
+        subsystem: "com.codetay.xzip",
+        category: "lifecycle"
+    )
+
     func application(_ application: NSApplication, open urls: [URL]) {
         guard model != nil else {
             pendingURLs.append(contentsOf: urls)
@@ -31,6 +40,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // If this batch left 2+ archives open, reveal the sidebar so the user
         // can see and switch between them.
         model?.revealSidebarForMultipleArchives()
+        // The window may have been closed (app kept alive in the Dock): the
+        // model just accepted the archive, but there is no window to show it or
+        // host the password-prompt sheet, and nothing to bring frontmost.
+        ensureMainWindowExists(reason: "open urls")
+        activateIfOpeningFiles(urls)
+    }
+
+    /// Guarantees the main window exists when the app was launched BY a file
+    /// open.
+    ///
+    /// The `WindowGroup` opts out of external events entirely (see the scene),
+    /// which on a normal launch still yields the default window — but when the
+    /// launch was CAUSED by an external event, SwiftUI treats that declined
+    /// event as the window request and creates nothing: no window, no
+    /// `.onAppear`, no `model`, and the buffered URLs never flush. Running the
+    /// reopen path is the same "give me your default window" request a Dock
+    /// click makes, and it goes through SwiftUI's ordinary window creation, not
+    /// the external-event activation path that crashes in toolbar layout.
+    ///
+    /// Deferred one runloop pass so SwiftUI's scene bookkeeping from the launch
+    /// has settled before the reopen asks it for a window.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.ensureMainWindowExists(reason: "didFinishLaunching")
+        }
+    }
+
+    /// Recreates the group's default window when none exists.
+    ///
+    /// Two states need this: a launch CAUSED by a file open (the scene declined
+    /// the launching event, so SwiftUI made no window), and an `open` arriving
+    /// while the app sits window-less in the Dock after its window was closed.
+    /// Asking LaunchServices to "open" this already-running app is delivered as
+    /// the same reopen event a Dock click produces, and SwiftUI answers it by
+    /// materialising the default window through its ordinary creation path — not
+    /// the external-event activation path that crashes in toolbar layout. (A
+    /// hand-built kAEReopenApplication descriptor was tried and went nowhere:
+    /// without a valid target PSN the send fails silently.)
+    private func ensureMainWindowExists(reason: String) {
+        guard NSApp.windows.first(where: { $0.canBecomeMain }) == nil else { return }
+        lifecycleLog.notice("ensureMainWindowExists(\(reason, privacy: .public)): requesting reopen")
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        NSWorkspace.shared.openApplication(
+            at: Bundle.main.bundleURL,
+            configuration: configuration
+        )
     }
 
     /// Remove the entries extracted for Quick Look, drag-out and Share before the
@@ -43,12 +99,206 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model?.scratch.removeAll()
     }
 
+    /// Delete the session's scratch files off the main thread, then let the quit
+    /// proceed.
+    ///
+    /// This work used to run synchronously in `applicationWillTerminate`, which
+    /// blocks the main thread: a recursive `removeItem` over an extracted tree can
+    /// take seconds, and AppKit renders that as a beachball, so quitting after a
+    /// large drag-out looked like a hang and had to be force-quit. Dragging a
+    /// folder now extracts its whole tree, which made the stall far more likely.
+    ///
+    /// `.terminateLater` is what keeps the security property intact: the plaintext
+    /// is still removed before the process exits, rather than being left on disk
+    /// for the next launch to prune. `applicationWillTerminate` remains as the
+    /// backstop for quits that bypass this hook.
+    func applicationShouldTerminate(
+        _ sender: NSApplication
+    ) -> NSApplication.TerminateReply {
+        lifecycleLog.notice("shouldTerminate: entered")
+        // Release any file promise still registered on the drag pasteboard.
+        //
+        // `terminate:` posts a notification that CF answers by resolving every
+        // outstanding pasteboard promise before the app dies
+        // (`CFPasteboardResolveAllPromisedData`), spinning a nested run loop on
+        // the main thread until each promise delivers. A drag-out leaves its
+        // `NSItemProvider` promise registered even after a successful drop, and
+        // fulfilling it needs the main actor (`extractEntryToTemp`) — which that
+        // nested loop never services. Quitting after any drag-out therefore
+        // deadlocked in `terminate:` (sampled: 100% of time under
+        // CFPasteboardResolveAllPromisedData → mach_msg) and had to be
+        // force-quit. The delivered files are already on disk; the leftover
+        // promise is pure liability, so drop it before termination advances.
+        NSPasteboard(name: .drag).clearContents()
+        // NOTE: when a sheet is up, AppKit's `terminate:` gives up BEFORE ever
+        // consulting this delegate (traced: no `shouldTerminate` entry on a
+        // quit attempted with the password prompt attached). Sheet handling for
+        // quit therefore lives in `requestQuit`, which runs before `terminate:`.
+        // The cancel below only covers the AE-quit path arriving between a
+        // sheet's model-side dismissal and its visual detach.
+        if let model, model.isPasswordPromptPresented {
+            lifecycleLog.notice("shouldTerminate: lowering password prompt")
+            model.passwordPromptDidCancel()
+            model.isPasswordPromptPresented = false
+        }
+        let roots = model?.scratch.takeRootsForTermination() ?? []
+        let sheetsUp = NSApp.windows.contains { !$0.sheets.isEmpty }
+        guard !roots.isEmpty || sheetsUp else {
+            lifecycleLog.notice("shouldTerminate: nothing to wait for, terminateNow")
+            return .terminateNow
+        }
+        lifecycleLog.notice("shouldTerminate: roots=\(roots.count) sheetsUp=\(sheetsUp), terminateLater")
+        let deletion = DispatchGroup()
+        if !roots.isEmpty {
+            deletion.enter()
+            DispatchQueue.global(qos: .userInitiated).async {
+                for root in roots {
+                    try? FileManager.default.removeItem(at: root)
+                }
+                deletion.leave()
+            }
+        }
+        deletion.notify(queue: .main) { [weak self] in
+            self?.replyToTerminationWhenSheetsGone(attemptsLeft: 40)
+        }
+        return .terminateLater
+    }
+
+    /// Lets the quit proceed once no window has a sheet attached.
+    ///
+    /// Polls across runloop passes because sheet dismissal is SwiftUI-animated
+    /// and there is no callback for "the sheet is gone". Bounded: after ~2s the
+    /// reply is sent regardless — a stuck sheet must degrade to the pre-fix
+    /// behaviour (AppKit aborts the close), never to an unbounded wait, since
+    /// nothing would ever resolve it.
+    private func replyToTerminationWhenSheetsGone(attemptsLeft: Int) {
+        let sheetsUp = NSApp.windows.contains { !$0.sheets.isEmpty }
+        guard sheetsUp, attemptsLeft > 0 else {
+            lifecycleLog.notice("termination reply: sheetsUp=\(sheetsUp) attemptsLeft=\(attemptsLeft)")
+            NSApp.reply(toApplicationShouldTerminate: true)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.replyToTerminationWhenSheetsGone(attemptsLeft: attemptsLeft - 1)
+        }
+    }
+
+    /// Quit entry point for ⌘Q, replacing the stock terminate menu action.
+    ///
+    /// With a sheet attached (the encrypted-archive password prompt), AppKit's
+    /// own `terminate:` abandons the quit BEFORE consulting
+    /// `applicationShouldTerminate` (traced on-disk: quitting with the prompt up
+    /// leaves no `shouldTerminate` entry, the app just returns to its run loop —
+    /// which reads as a hang and got force-quit). So the sheet has to come down
+    /// before `terminate:` runs at all: cancel through the model, give SwiftUI
+    /// one runloop pass to detach the sheet, then start the normal termination,
+    /// which now reaches the delegate and the scratch cleanup.
+    func requestQuit() {
+        lifecycleLog.notice("requestQuit promptUp=\(self.model?.isPasswordPromptPresented ?? false)")
+        guard let model, model.isPasswordPromptPresented else {
+            NSApp.terminate(nil)
+            return
+        }
+        model.passwordPromptDidCancel()
+        model.isPasswordPromptPresented = false
+        DispatchQueue.main.async {
+            NSApp.terminate(nil)
+        }
+    }
+
     private func flushPendingURLs() {
         guard model != nil, !pendingURLs.isEmpty else { return }
         let urls = pendingURLs
         pendingURLs = []
         urls.forEach(route)
         model?.revealSidebarForMultipleArchives()
+        activateIfOpeningFiles(urls)
+    }
+
+    /// Pull the app to the front for a Finder file open.
+    ///
+    /// `NSApp.activate()` alone was not enough, for three reasons:
+    ///
+    /// - It does not clear `NSApplication.isHidden`, and the `xzip://`
+    ///   quick-compress branch below hides the app deliberately. After one quick
+    ///   compress, every later "Open With" updated the window's contents behind a
+    ///   still-hidden app.
+    /// - App-level activation does not raise a window that is hidden or
+    ///   minimized, so the window itself has to be ordered front.
+    /// - Under cooperative activation (macOS 14+) a self-activation submitted
+    ///   before the system's own LaunchServices activation transfer settles is
+    ///   silently dropped, so this has to land on a later runloop pass — the same
+    ///   deferral the `hide` below already relies on.
+    ///
+    /// Called once per batch rather than per URL: a multi-file open needs one
+    /// activation, not one per file.
+    private func activateIfOpeningFiles(_ urls: [URL]) {
+        guard urls.contains(where: \.isFileURL) else { return }
+        // ~2s of retries: when the main window was closed (app kept alive in the
+        // Dock), the open triggers SwiftUI's reopen path and the window is
+        // recreated asynchronously — activation can win the race long before the
+        // window exists to be ordered front.
+        raiseWindow(attemptsLeft: 40)
+    }
+
+    /// One activation attempt, repeated across runloop passes until it takes.
+    ///
+    /// Under cooperative activation (macOS 14+) an app cannot simply take focus:
+    /// `NSApp.activate()` is a *request*, and the window server refuses it for a
+    /// background app, silently. That is why plain `activate()` — with or without
+    /// `ignoringOtherApps`, deferred or not — never moved XZip to the front when it
+    /// was already running. The path that does work is
+    /// `activate(from:options:)`: focus is TRANSFERRED from the app that asked for
+    /// the open (Finder), which is entitled to give it away. A transfer is granted
+    /// where a self-request is denied.
+    ///
+    /// The retry exists because LaunchServices delivers the open event before the
+    /// requesting app has necessarily settled, so the first attempt can find no
+    /// front app to take focus from. Re-checking `NSApp.isActive` each pass makes
+    /// this converge rather than guess a delay: a fast hand-off costs one pass, a
+    /// slow one keeps trying, and success stops the loop.
+    private func raiseWindow(attemptsLeft: Int) {
+        // Clears `isHidden`, which activation does not: the `xzip://`
+        // quick-compress branch below hides the app deliberately, and after one
+        // quick compress every later open updated the window behind a hidden app.
+        NSApp.unhide(nil)
+
+        // Prefer a transfer from whoever is frontmost (Finder for an "Open With").
+        // `NSApp.activate()` remains the fallback for a cold launch, where this
+        // app IS already frontmost and there is nothing to transfer from.
+        let source = NSWorkspace.shared.frontmostApplication
+        if let source, source != .current {
+            NSRunningApplication.current.activate(from: source, options: [.activateAllWindows])
+        } else {
+            NSApp.activate()
+        }
+        lifecycleLog.notice(
+            "raiseWindow attempt=\(attemptsLeft) source=\(source?.bundleIdentifier ?? "nil", privacy: .public) isActive=\(NSApp.isActive) hidden=\(NSApp.isHidden) windows=\(NSApp.windows.count)"
+        )
+
+        // Not `keyWindow`: a hidden app has no key window, which is exactly the
+        // case this exists for. Deminiaturize first — an ordered-front window
+        // that is still minimized stays in the Dock.
+        if let window = NSApp.windows.first(where: { $0.canBecomeMain })
+            ?? NSApp.windows.first {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+        }
+        // Done only when the app is active AND a real window exists to be front.
+        // Checking `isActive` alone stopped too early in the closed-window case:
+        // activation succeeds immediately (the app can be "active" with zero
+        // windows), while the reopened window is still being built — quitting
+        // the loop then left the new window behind Finder.
+        let hasWindow = NSApp.windows.contains { $0.canBecomeMain && $0.isVisible }
+        guard attemptsLeft > 1, !(NSApp.isActive && hasWindow) else {
+            lifecycleLog.notice(
+                "raiseWindow done isActive=\(NSApp.isActive) hasWindow=\(hasWindow) attemptsLeft=\(attemptsLeft)"
+            )
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            self?.raiseWindow(attemptsLeft: attemptsLeft - 1)
+        }
     }
 
     /// Route one incoming URL: a `file://` archive to open in the browser, or an
@@ -59,12 +309,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // If the archive is one part of a split set, offer to join it first.
             model.handlePossibleSplitArchive(url)
             model.openArchive(url)
-            // A running app that receives an "Open With" no longer gets pulled
-            // to the front by macOS (cooperative activation, macOS 14+); do it
-            // ourselves so the window becomes frontmost. Only for real file
-            // opens — the `xzip://` quick-compress branch below deliberately
-            // hands focus back to Finder.
-            NSApp.activate()
+            // Activation is handled once per batch by `activateIfOpeningFiles`,
+            // not here: it has to be deferred to a later runloop pass, and a
+            // multi-file open needs one activation rather than one per file.
+            // Only real file opens activate — the `xzip://` quick-compress
+            // branch below deliberately hands focus back to Finder.
             return
         }
         guard let command = AppCommand(url: url) else { return }
@@ -153,19 +402,36 @@ struct XZipApp: App {
                 .onAppear { appDelegate.model = model }
         }
         .defaultSize(width: 960, height: 640)
-        // Do NOT let this WindowGroup spawn a second window for an incoming
-        // file/URL open. SwiftUI's default behaviour opens a fresh window for
-        // external events, and laying out that window's customizable toolbar
-        // crashes on macOS 26 (AppKitToolbarStrategy.updateLocations). This app
-        // is single-window anyway — the delegate routes opens into the existing
-        // window's model. An empty match set opts the group out of external
-        // event handling so no extra window is created.
+        // SwiftUI must never touch external events, in EITHER direction:
+        //
+        // - Default behaviour opens a fresh window per event, and laying out that
+        //   second window's customizable toolbar crashes on macOS 26
+        //   (AppKitToolbarStrategy.updateLocations).
+        // - A view-level claim (`preferring: ["*"]`) was tried instead and it
+        //   crashes too: SwiftUI routes the event through its own
+        //   `activateWindowForExternalEvent`, whose layout pass dies inside the
+        //   same toolbar machinery while activating the EXISTING window.
+        //
+        // So the group opts out entirely; the AppKit delegate is the only
+        // receiver (`application(_:open:)`), and it feeds the existing window's
+        // model. The one hole this leaves — a cold launch caused by a file open
+        // creates no window, because the launching event was declined — is
+        // plugged by `applicationDidFinishLaunching`, which requests the default
+        // window explicitly (see the delegate).
         .handlesExternalEvents(matching: [])
         .commands {
             XZIPCommands(model: model, openQueue: { model.isQueuePopoverPresented = true })
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { updater.checkForUpdates() }
                     .disabled(!updater.canCheckForUpdates)
+            }
+            // ⌘Q must go through the delegate: AppKit's stock `terminate:`
+            // silently abandons the quit while a sheet (the password prompt) is
+            // attached, which read as a hang. `requestQuit` lowers the prompt
+            // first, then terminates — see AppDelegate.
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit XZip") { appDelegate.requestQuit() }
+                    .keyboardShortcut("q", modifiers: .command)
             }
         }
 

@@ -32,6 +32,9 @@ fail() { printf "\033[1;31mERROR:\033[0m %s\n" "$1" >&2; exit 1; }
 log "Fetching bundled binaries"
 bash "$SCRIPT_DIR/fetch_binaries.sh"
 
+log "Building universal liblzma (LZMA2 support for Quick Look listing)"
+bash "$SCRIPT_DIR/build_liblzma.sh"
+
 log "Generating Xcode project"
 command -v xcodegen >/dev/null || fail "xcodegen not installed (brew install xcodegen)"
 (cd "$ROOT_DIR" && xcodegen generate)

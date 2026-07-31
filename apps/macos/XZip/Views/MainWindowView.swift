@@ -57,25 +57,10 @@ struct MainWindowView: View {
         // name + subtitle, mockup 1a) is the single source of the title, so we
         // blank the inline navigation title to avoid showing the name twice.
         .navigationTitle(model.currentArchive == nil ? "XZip" : "")
-        .toolbar {
-            principalContent
-            // Explicit search item instead of `.searchable`: SwiftUI always
-            // pins the searchable field at the toolbar's trailing end (and
-            // DefaultToolbarItem(kind: .search) does not reorder it in this
-            // two-toolbar setup), so an NSSearchField item is the only way to
-            // keep the queue button as the trailing-most item. Both live
-            // outside the customizable "main" set so they remain visible while
-            // space permits; the popover uses a stable content anchor below
-            // because AppKit can still move toolbar items into overflow.
-            ToolbarItem(placement: .primaryAction) {
-                ToolbarSearchField(text: $model.searchText)
-                    .frame(width: 230)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                QueueToolbarButton(model: model)
-            }
-        }
+        .toolbar { principalContent }
         .toolbar(id: "main") { toolbarContent }
+        // Native toolbar search; SwiftUI pins the field at the trailing end.
+        .searchable(text: $model.searchText, placement: .toolbar)
         // Keep a presentation anchor even when AppKit moves the Queue toolbar
         // item into overflow. Menu commands, shortcuts, and status actions can
         // then present the same popover regardless of toolbar layout.
@@ -130,6 +115,14 @@ struct MainWindowView: View {
         .sheet(isPresented: Binding(get: { model.errorMessage != nil },
                                     set: { if !$0 { model.errorMessage = nil } })) {
             ErrorDialog(message: model.errorMessage ?? "") { model.errorMessage = nil }
+        }
+        // A window shows one sheet at a time, and every sheet above competes for
+        // that slot. A password prompt raised while one of them is up is dropped
+        // by SwiftUI, so the model defers it instead — and this is what brings it
+        // back once the slot frees, rather than leaving it parked forever.
+        .onChange(of: model.isNonPasswordSheetPresented) { _, isPresented in
+            guard !isPresented else { return }
+            model.resumeDeferredPasswordPromptIfPossible()
         }
         // Let the menu bar's ⌘W know this window is key (see XZIPCommands).
         .focusedSceneValue(\.mainWindowModel, model)
@@ -292,6 +285,10 @@ struct MainWindowView: View {
             .disabled(!model.hasOpenArchive)
         }
 
+        ToolbarItem(id: "queue", placement: .primaryAction) {
+            QueueToolbarButton(model: model)
+        }
+
     }
 
     private func subtitle(for archive: OpenArchive) -> String {
@@ -341,39 +338,6 @@ struct MainWindowView: View {
 /// a Safari-Downloads-style progress ring with the active count while
 /// operations run. A standalone view so Observation re-renders the label
 /// whenever `model.operations` changes, independent of the toolbar host.
-/// The toolbar search field, replacing `.searchable` so it can sit at an
-/// explicit position (right before the queue button) instead of SwiftUI's
-/// forced trailing-end placement. Styled after the system search capsule:
-/// magnifier, clear button, and a contrasting rounded background so it
-/// reads as a field against the toolbar material.
-private struct ToolbarSearchField: View {
-    @Binding var text: String
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Search", text: $text)
-                .textFieldStyle(.plain)
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Clear search")
-            }
-        }
-        .font(.body)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
-        .background(Color(nsColor: .textBackgroundColor), in: Capsule())
-        .overlay(Capsule().strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1))
-    }
-}
-
 private struct QueueToolbarButton: View {
     @Bindable var model: AppModel
 

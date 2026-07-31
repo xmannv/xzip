@@ -983,6 +983,15 @@ public protocol ArchiveEngine: Sendable {
     /// Test integrity without extracting. Returns true if the archive is intact.
     func test(archive: URL, password: String?) async throws -> Bool
 
+    /// Prove `password` can actually decrypt `archive`, throwing
+    /// `.wrongPassword` / `.passwordRequired` when it cannot.
+    ///
+    /// A successful listing is NOT proof: for the common case of encrypted data
+    /// behind a plaintext header (`7z a -p`, ZIP, RAR without `-hp`), `list`
+    /// succeeds without any password at all. Treating that as a verdict let a
+    /// wrong password be accepted and saved to the Keychain.
+    func verifyPassword(archive: URL, password: String?) async throws
+
     /// The archive-level comment, or "" if the format has none. Read-only for
     /// most engines; a requirement (not just an extension) so the concrete
     /// engine's override is dynamically dispatched through `any ArchiveEngine`.
@@ -992,4 +1001,11 @@ public protocol ArchiveEngine: Sendable {
 public extension ArchiveEngine {
     /// Default: no comment support (e.g. DMG).
     func readComment(archive: URL, password: String?) async throws -> String { "" }
+
+    /// Default: fall back to a full integrity test, which also exercises
+    /// decryption. Engines able to check a single entry should override this —
+    /// testing a multi-gigabyte archive to validate a password is wasteful.
+    func verifyPassword(archive: URL, password: String?) async throws {
+        _ = try await test(archive: archive, password: password)
+    }
 }

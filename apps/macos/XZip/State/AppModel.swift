@@ -371,7 +371,9 @@ final class AppModel {
         pendingPasswordSaves[key] = nil
     }
 
-    private func invalidateSavedPasswordIfMatching(
+    /// Internal rather than private: the single-entry operations live in
+    /// `AppModel+SingleEntryOps.swift` and have to drop a rejected password too.
+    func invalidateSavedPasswordIfMatching(
         _ attemptedPassword: String?,
         for archive: URL
     ) {
@@ -430,14 +432,53 @@ final class AppModel {
             validationContexts: [validationContext],
             errorMessage: message
         )
-        guard !isPasswordPromptPresented,
-              passwordPromptPresentationID == nil,
-              scheduledPasswordPrompt == nil
-        else {
+        guard canRaisePasswordPromptSheet else {
             deferredPasswordPrompts.append(group)
             return
         }
         activatePasswordPrompt(group)
+    }
+
+    /// Whether a sheet other than the password prompt owns the window's sheet
+    /// slot right now.
+    ///
+    /// A window presents one sheet at a time, and `MainWindowView` attaches
+    /// several to the same view. Raising the prompt while one of these is up let
+    /// SwiftUI silently drop it, while the model went on believing it was
+    /// visible — so every later prompt queued behind a sheet that was never
+    /// shown and no user-visible event could clear it. `MainWindowView` observes
+    /// this and calls `resumeDeferredPasswordPromptIfPossible()` when it clears.
+    var isNonPasswordSheetPresented: Bool {
+        isCompressSheetPresented
+            || pendingSplitDetection != nil
+            || pendingConflict != nil
+            || shareArchive != nil
+            || activeRepack != nil
+            || newItemRequest != nil
+            || errorMessage != nil
+    }
+
+    /// Whether the prompt can be raised now: the sheet slot has to be free of
+    /// both another sheet and any prompt presentation still being tracked.
+    private var canRaisePasswordPromptSheet: Bool {
+        !isNonPasswordSheetPresented
+            && !isPasswordPromptPresented
+            && passwordPromptPresentationID == nil
+            && scheduledPasswordPrompt == nil
+    }
+
+    /// Raises a prompt that was deferred because another sheet held the slot.
+    ///
+    /// Without this, deferring was a one-way trip: nothing else observes the
+    /// competing sheets, so a prompt parked behind one stayed parked for the rest
+    /// of the session and the archive could never be unlocked. `MainWindowView`
+    /// calls this whenever `isNonPasswordSheetPresented` goes false.
+    ///
+    /// A no-op when the slot is still busy or nothing is waiting, so it is safe
+    /// to call on every such change.
+    func resumeDeferredPasswordPromptIfPossible() {
+        guard !deferredPasswordPrompts.isEmpty, canRaisePasswordPromptSheet else { return }
+        activatePasswordPrompt(deferredPasswordPrompts.removeFirst())
     }
 
     /// Places repository (file bookmarks in `UserDefaults`).
@@ -1232,7 +1273,13 @@ final class AppModel {
             passwordPromptDidCancel()
         }
         isPasswordPromptPresented = false
-        guard scheduledPasswordPrompt == nil, !deferredPasswordPrompts.isEmpty else { return }
+        // Also checks for a competing sheet: cancelling a prompt can itself raise
+        // one (an operation's failure sets `errorMessage`), and reserving the next
+        // prompt into a slot that sheet owns would lose it.
+        guard scheduledPasswordPrompt == nil,
+              !isNonPasswordSheetPresented,
+              !deferredPasswordPrompts.isEmpty
+        else { return }
         let reserved = deferredPasswordPrompts.removeFirst()
         scheduledPasswordPrompt = reserved
         // Capture identity: an older yielded task may not consume a replacement.
@@ -1473,13 +1520,6 @@ final class AppModel {
             }
             do {
                 let entries = try await service.list(archive: url, password: pwd)
-                self.confirmPendingPasswordSave(
-                    for: url,
-                    password: pwd,
-                    context: .listing
-                )
-                // The archive opened, so the credential was accepted.
-                self.resolvePasswordVerification(generation: verification, verdict: .correct)
                 // Ignore stale results: the user may have switched archives or
                 // started a newer refresh while this listing was still in flight.
                 guard self.listingGeneration == generation, self.currentArchive?.url == url else { return }
@@ -1488,11 +1528,23 @@ final class AppModel {
                 let ui = await Task.detached { ModelMapping.uiEntries(from: entries) }.value
                 guard self.listingGeneration == generation, self.currentArchive?.url == url else { return }
                 self.archiveEntries = ui
+                let isEncrypted = entries.contains { $0.isEncrypted }
                 // Keep the sidebar metadata (count + lock badge) in sync.
                 if let index = self.openArchives.firstIndex(where: { $0.url == url }) {
-                    self.openArchives[index].itemCount = entries.count
-                    self.openArchives[index].isEncrypted = entries.contains { $0.isEncrypted }
+                    // Counted from `ui`, the same array the status bar counts, so
+                    // the sidebar and the window subtitle cannot disagree with it.
+                    // `entries.count` omits the synthesized folder rows and made
+                    // the two totals differ for archives without directory records.
+                    self.openArchives[index].itemCount = ui.count
+                    self.openArchives[index].isEncrypted = isEncrypted
                 }
+                await self.verifyListingCredential(
+                    for: url,
+                    password: pwd,
+                    isEncrypted: isEncrypted,
+                    listingGeneration: generation,
+                    verification: verification
+                )
             } catch let error as ArchiveEngineError {
                 guard self.listingGeneration == generation, self.currentArchive?.url == url else { return }
                 switch error {
@@ -1519,6 +1571,89 @@ final class AppModel {
                 self.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    /// Rules on `password` for an encrypted archive that listed successfully, and
+    /// asks the user for one when it cannot be proven.
+    ///
+    /// A successful listing is not proof of anything: `7z a -p`, ZIP and RAR
+    /// without `-hp` all encrypt the data behind a plaintext header, so `list`
+    /// succeeds with no password at all. Two bugs followed from treating it as a
+    /// verdict — the user was never prompted when opening such an archive, and a
+    /// wrong password entered elsewhere was declared correct and written to the
+    /// Keychain. Both are now decided by `verifyPassword`, which actually
+    /// decrypts.
+    private func verifyListingCredential(
+        for url: URL,
+        password: String?,
+        isEncrypted: Bool,
+        listingGeneration generation: Int,
+        verification: UInt64?
+    ) async {
+        guard let password, !password.isEmpty else {
+            guard listingGeneration == generation, currentArchive?.url == url else { return }
+            // Listing an encrypted archive without a password means the header was
+            // plaintext, so nothing has been proven and the user still has to
+            // supply one. `.passwordRequired` rather than `.wrongPassword`: no
+            // password was rejected, so the sheet must not claim one was.
+            //
+            // When nothing is encrypted there is no password to rule on, and the
+            // sheet is released rather than left waiting for a verdict.
+            if isEncrypted {
+                presentPasswordPrompt(
+                    for: url,
+                    validationContext: .listing,
+                    error: .passwordRequired
+                )
+            } else {
+                resolvePasswordVerification(
+                    generation: verification,
+                    verdict: .indeterminate
+                )
+            }
+            return
+        }
+        do {
+            try await service.verifyPassword(archive: url, password: password)
+        } catch let error as ArchiveEngineError {
+            guard listingGeneration == generation, currentArchive?.url == url else { return }
+            switch error {
+            case .wrongPassword, .passwordRequired:
+                // Drop the proven-wrong credential from both stores before
+                // prompting, so a retry cannot silently reuse it.
+                invalidateSavedPasswordIfMatching(password, for: url)
+                credentials.discard(for: url, ifMatching: password)
+                presentPasswordPrompt(
+                    for: url,
+                    validationContext: .listing,
+                    error: error
+                )
+            default:
+                // An unrelated failure (a damaged archive, a missing binary) says
+                // nothing about the password, so the sheet is released rather than
+                // left waiting on a verdict that will not come.
+                errorMessage = error.localizedDescription
+                resolvePasswordVerification(
+                    generation: verification,
+                    verdict: .indeterminate
+                )
+            }
+            return
+        } catch {
+            guard listingGeneration == generation, currentArchive?.url == url else { return }
+            errorMessage = error.localizedDescription
+            resolvePasswordVerification(
+                generation: verification,
+                verdict: .indeterminate
+            )
+            return
+        }
+        // Proven by decryption, so it is now safe to persist and to close the
+        // sheet. Deliberately not guarded on staleness: the password was verified
+        // for THIS archive, and a pending Keychain save the user asked for must
+        // survive them switching away while the check ran.
+        confirmPendingPasswordSave(for: url, password: password, context: .listing)
+        resolvePasswordVerification(generation: verification, verdict: .correct)
     }
 
     /// Tell the user a mutation was refused because that archive is still busy.

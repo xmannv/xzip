@@ -35,6 +35,11 @@ final class LibarchiveListingReaderTests: XCTestCase {
         let cases = [
             ("sample", "zip"),
             ("sample", "7z"),
+            // LZMA2 is 7-Zip's DEFAULT encoding, and decoding it is gated behind
+            // swift-archive's off-by-default LZMASupport trait. Without the trait
+            // this case fails — and Quick Look failed on virtually every
+            // real-world .7z while the stored-entry `sample.7z` kept passing.
+            ("sample-lzma2", "7z"),
             ("sample", "tar"),
             ("sample-rar4", "rar"),
             ("sample-rar5", "rar")
