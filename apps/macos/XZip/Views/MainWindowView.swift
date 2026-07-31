@@ -61,19 +61,6 @@ struct MainWindowView: View {
         .toolbar(id: "main") { toolbarContent }
         // Native toolbar search; SwiftUI pins the field at the trailing end.
         .searchable(text: $model.searchText, placement: .toolbar)
-        // Keep a presentation anchor even when AppKit moves the Queue toolbar
-        // item into overflow. Menu commands, shortcuts, and status actions can
-        // then present the same popover regardless of toolbar layout.
-        .overlay(alignment: .topTrailing) {
-            Color.clear
-                .frame(width: 1, height: 1)
-                .popover(
-                    isPresented: $model.isQueuePopoverPresented,
-                    arrowEdge: .bottom
-                ) {
-                    QueuePopover(model: model)
-                }
-        }
         .sheet(isPresented: $model.isCompressSheetPresented) {
             CompressSheet(model: model)
         }
@@ -368,6 +355,16 @@ private struct QueueToolbarButton: View {
         }
         .buttonStyle(.plain)
         .help("Show the operations queue")
+        // Anchored to the button itself (like the Comment popover) so the
+        // arrow points at the Queue icon wherever the user places it in the
+        // customizable toolbar. Menu commands, shortcuts, and status actions
+        // toggle the same flag and present from this anchor.
+        .popover(
+            isPresented: $model.isQueuePopoverPresented,
+            arrowEdge: .bottom
+        ) {
+            QueuePopover(model: model)
+        }
     }
 }
 
