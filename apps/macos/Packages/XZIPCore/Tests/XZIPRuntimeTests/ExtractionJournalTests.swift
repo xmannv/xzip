@@ -3119,7 +3119,18 @@ final class ExtractionJournalTests: XCTestCase {
                 break
             }
         }
-        let modulesDirectory = try XCTUnwrap(compiledModulesDirectory)
+        // Newer SwiftPM drops the Modules/ level: `.build/<config>` symlinks into
+        // `out/Products/<config>` and the module bundle sits beside the products.
+        let productsDebug = packageRoot
+            .appendingPathComponent(".build")
+            .appendingPathComponent("debug")
+        let modulesDirectory = try XCTUnwrap(
+            compiledModulesDirectory
+                ?? (FileManager.default.fileExists(
+                    atPath: productsDebug
+                        .appendingPathComponent("XZIPRuntime.swiftmodule").path)
+                    ? productsDebug : nil)
+        )
         let probeDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(
