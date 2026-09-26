@@ -103,6 +103,54 @@ extension AppModel {
         }
     }
 
+    /// Extract a nested-archive entry (a .dmg/.zip inside the current archive)
+    /// to a scratch export dir and open it in the archive browser.
+    ///
+    /// The export directory lives until the session ends: the URL stays
+    /// registered in the sidebar, and re-listing or extracting from it (e.g. a
+    /// DMG re-attaching via hdiutil) needs the file to still be there. The URL
+    /// is deliberately not recorded as a recent document — it is a temp path
+    /// that stops existing on quit.
+    ///
+    /// Repeated opens of the same entry reuse the first extraction rather than
+    /// minting a second sidebar row for identical temp copies. The memo is
+    /// invalidated by the outer archive's mtime: a repack (add/delete/rename)
+    /// swaps the file, so a changed timestamp means the extracted copy is stale.
+    func openEntryAsArchive(_ entry: ArchiveEntry) async {
+        guard ArchiveBrowsing.isArchive(entry),
+              let archive = currentArchive?.url else { return }
+        let key = "\(archive.path)\n\(entry.path)"
+        let archiveModifiedAt = (try? archive.resourceValues(
+            forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        if let memoized = nestedEntryExportURLs[key] {
+            if memoized.archiveModifiedAt == archiveModifiedAt {
+                openArchive(memoized.url, registersRecentDocument: false)
+                return
+            }
+            // Stale copy: the entry's bytes changed under it. Close the open
+            // row so the sidebar doesn't keep browsing the old contents, and
+            // free the temp file before re-extracting. `closeArchive` records
+            // it in `recentlyClosed`, but that path is about to be deleted, so
+            // drop it again — ⇧⌘T must never offer a guaranteed-dead URL.
+            if let stale = openArchives.first(where: { $0.url == memoized.url }) {
+                closeArchive(stale.id)
+                recentlyClosed.removeAll { $0 == memoized.url }
+            }
+            discardScratchExport(containing: memoized.url)
+            nestedEntryExportURLs[key] = nil
+        }
+        // The memo is written only after extraction, so a second double-click
+        // while a slow extract is still running would slip past the check above
+        // and extract a second copy. The first task opens the archive anyway;
+        // dropping the duplicate gesture loses nothing.
+        guard nestedEntryOpensInFlight.insert(key).inserted else { return }
+        defer { nestedEntryOpensInFlight.remove(key) }
+        if let url = await extractEntryToTemp(entry) {
+            nestedEntryExportURLs[key] = (url, archiveModifiedAt)
+            openArchive(url, registersRecentDocument: false)
+        }
+    }
+
     /// Extract a single entry to a scratch dir and return its file URL.
     /// Used by drag-out to Finder (mockup 3c "kéo ngược file ra Finder").
     ///

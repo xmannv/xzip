@@ -180,6 +180,12 @@ struct ArchiveBrowserView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    if ArchiveBrowsing.isArchive(entry) {
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .help("Open this archive")
+                    }
                     if model.editSaveBack.activeEntryPaths.contains(entry.path) {
                         Image(systemName: "pencil.circle.fill")
                             .foregroundStyle(XZIPColor.accent)
@@ -252,11 +258,14 @@ struct ArchiveBrowserView: View {
 
     // MARK: - Double-click + drag-out
 
-    /// Descend into folders; preview files (mockup 1b navigation).
+    /// Descend into folders; open nested archives (e.g. a .dmg entry) in the
+    /// archive browser; preview other files (mockup 1b navigation).
     private func handleDoubleClick(_ entry: ArchiveEntry) {
         if model.isFolder(entry) {
             let rel = entry.path.hasPrefix("/") ? String(entry.path.dropFirst()) : entry.path
             model.navigateToFolder(rel)
+        } else if ArchiveBrowsing.isArchive(entry) {
+            Task { await model.openEntryAsArchive(entry) }
         } else {
             Task { await preview(entry) }
         }
@@ -308,6 +317,13 @@ struct ArchiveBrowserView: View {
         // modified, so the edit actions are hidden entirely — matching the
         // toolbar, which disables the same operations.
         let canModify = model.canModifyCurrentArchive
+
+        // A nested archive (e.g. a .dmg inside a .zip) opens in XZip, matching
+        // the folder browser's "Open" and the double-click behaviour.
+        if !isMulti && ArchiveBrowsing.isArchive(primary) {
+            Button("Open") { Task { await model.openEntryAsArchive(primary) } }
+            Divider()
+        }
 
         Button(isMulti ? "Extract \(entries.count) Items" : "Extract \u{201C}\(primary.name)\u{201D}") {
             extractSelected(entries)

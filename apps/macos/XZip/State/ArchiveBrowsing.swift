@@ -1,4 +1,5 @@
 import Foundation
+import XZIPCore
 
 /// Pure, state-free logic backing the archive browser + queue (round-2 features).
 ///
@@ -67,6 +68,14 @@ enum ArchiveBrowsing {
     /// Relative path of an archive entry with any leading slash removed.
     static func relativePath(_ entry: ArchiveEntry) -> String {
         entry.path.hasPrefix("/") ? String(entry.path.dropFirst()) : entry.path
+    }
+
+    /// Whether the entry is a nested archive XZip can open (drives double-click
+    /// opening it in the archive browser instead of Quick Look, mirroring
+    /// `FolderBrowsing.isArchive` for on-disk files).
+    static func isArchive(_ entry: ArchiveEntry) -> Bool {
+        guard entry.kind != .folder else { return false }
+        return ArchiveFormat.infer(fromFilename: entry.name) != nil
     }
 
     // MARK: - Rows shown in the archive table

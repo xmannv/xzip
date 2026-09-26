@@ -125,6 +125,24 @@ final class ArchiveBrowsingTests: XCTestCase {
         XCTAssertEqual(ArchiveBrowsing.relativePath(entry("a/b.txt")), "a/b.txt")
     }
 
+    // MARK: - isArchive (nested archives open instead of Quick Look)
+
+    func testIsArchiveTrueForDMGEntry() {
+        XCTAssertTrue(ArchiveBrowsing.isArchive(entry("inner/app.dmg")))
+    }
+
+    func testIsArchiveTrueForCompoundExtension() {
+        XCTAssertTrue(ArchiveBrowsing.isArchive(entry("backup.tar.gz")))
+    }
+
+    func testIsArchiveFalseForPlainFile() {
+        XCTAssertFalse(ArchiveBrowsing.isArchive(entry("notes.txt")))
+    }
+
+    func testIsArchiveFalseForFolderNamedLikeArchive() {
+        XCTAssertFalse(ArchiveBrowsing.isArchive(entry("assets.dmg", kind: .folder)))
+    }
+
     // MARK: - rows / sort
     //
     // This is what the archive table displays. It moved out of the view so it can

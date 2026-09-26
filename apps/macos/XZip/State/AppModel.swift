@@ -213,6 +213,17 @@ final class AppModel {
     }
     @ObservationIgnored private var extractionRequestGeneration: UInt64 = 0
     @ObservationIgnored private var latestConflictPromptGeneration: UInt64 = 0
+    /// Scratch URLs of nested archives already extracted for browsing, keyed by
+    /// "<archive path>\n<entry path>". Reopening the same entry focuses the
+    /// archive already open instead of extracting — and listing — it twice into
+    /// two identical sidebar rows. `archiveModifiedAt` invalidates the entry when
+    /// the outer archive is repacked (any mutation swaps the file → new mtime).
+    @ObservationIgnored var nestedEntryExportURLs: [String: (url: URL, archiveModifiedAt: Date?)] = [:]
+    /// Keys with an `openEntryAsArchive` extraction currently in flight. The
+    /// memo above is only written after extraction finishes, so a second
+    /// double-click during a slow extract would otherwise race it and mint a
+    /// duplicate export + sidebar row.
+    @ObservationIgnored var nestedEntryOpensInFlight: Set<String> = []
     #if DEBUG
     @ObservationIgnored var conflictPreflightDidFinish:
         @MainActor (UInt64) -> Void = { _ in }
@@ -1372,7 +1383,8 @@ final class AppModel {
     /// Open Archives sidebar section, making it the current browser subject.
     func openArchive(
         _ url: URL,
-        allowRememberedCredential: Bool = true
+        allowRememberedCredential: Bool = true,
+        registersRecentDocument: Bool = true
     ) {
         // No password clearing here any more: credentials are keyed by archive,
         // so each one resolves its own without inheriting the previous archive's.
@@ -1380,10 +1392,14 @@ final class AppModel {
         // submit or explicit dismissal. Merely viewing another archive must not
         // destroy that unrelated recovery action.
         // Feed macOS's recent-documents list (also powers the Dock icon's
-        // right-click “Recent Documents” menu and File → Open Recent).
-        NSDocumentController.shared.noteNewRecentDocumentURL(url)
-        recentDocuments.removeAll { $0 == url }
-        recentDocuments.insert(url, at: 0)
+        // right-click “Recent Documents” menu and File → Open Recent). Skipped
+        // for scratch URLs (nested archives extracted for browsing): those paths
+        // stop existing on quit, so they'd only litter the menu with dead items.
+        if registersRecentDocument {
+            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+            recentDocuments.removeAll { $0 == url }
+            recentDocuments.insert(url, at: 0)
+        }
         // Opening an archive leaves the Places folder-browsing mode.
         browsingFolder = nil
         // The toolbar search field is shared between the folder browser and the
