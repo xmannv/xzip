@@ -721,9 +721,14 @@ final class RawProcessStreamState: ProcessOutputState, @unchecked Sendable {
             return
         }
         let input = request.standardInput
+        // The writer gets a private descriptor. When the child exits without
+        // draining stdin, the terminal path closes `handle` while the writer is
+        // still queued; `FileHandle.write` on a closed handle raises an
+        // Objective-C exception that `try?` cannot catch and aborts the app.
+        // Still under the lock, so `handle` has not been detached or closed yet.
+        let writeDescriptor = input == nil ? -1 : dup(handle.fileDescriptor)
         lock.unlock()
 
-        _ = fcntl(handle.fileDescriptor, F_SETNOSIGPIPE, 1)
         guard let input else {
             try? handle.close()
             stdinDidClose(handle)
@@ -731,7 +736,27 @@ final class RawProcessStreamState: ProcessOutputState, @unchecked Sendable {
         }
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            try? handle.write(contentsOf: input)
+            if writeDescriptor >= 0 {
+                _ = fcntl(writeDescriptor, F_SETNOSIGPIPE, 1)
+                input.withUnsafeBytes { bytes in
+                    var offset = 0
+                    while offset < bytes.count {
+                        let written = Darwin.write(
+                            writeDescriptor,
+                            bytes.baseAddress?.advanced(by: offset),
+                            bytes.count - offset
+                        )
+                        if written > 0 {
+                            offset += written
+                        } else if written < 0, errno == EINTR {
+                            continue
+                        } else {
+                            break  // EPIPE: the child closed stdin early
+                        }
+                    }
+                }
+                Darwin.close(writeDescriptor)
+            }
             try? handle.close()
             self?.stdinDidClose(handle)
         }
