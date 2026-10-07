@@ -12,6 +12,9 @@ struct ArchiveBrowserView: View {
     @State private var sortOrder = [KeyPathComparator(\ArchiveEntry.name)]
     @State private var renamingEntry: ArchiveEntry?
     @State private var renameText = ""
+    /// Keeps the Table the focused view so the selection draws active (blue)
+    /// rather than inactive grey after navigating into a subfolder.
+    @FocusState private var tableFocused: Bool
     @AppStorage(XZIPDefaults.foldersFirst) private var foldersFirst = true
 
     /// True while the user is searching (filters across the whole archive).
@@ -120,11 +123,6 @@ struct ArchiveBrowserView: View {
         }
         // Cross-fade between the loading state and the populated table.
         .animation(.easeInOut(duration: 0.2), value: model.isLoadingEntries)
-        .quickLookPreview($quickLookURL)
-        .onKeyPress(.space) {
-            Task { await previewSelection() }
-            return .handled
-        }
         .dropDestination(for: URL.self) { urls, _ in
             model.addFilesToArchive(urls)
             return true
@@ -223,6 +221,13 @@ struct ArchiveBrowserView: View {
             }
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .focused($tableFocused)
+        .onChange(of: model.selectedArchiveEntryIDs) { tableFocused = true }
+        .onChange(of: model.currentFolderPath) { tableFocused = true }
+        .quickLookPreview($quickLookURL)
+        // `onKeyPress(.space)` never fires from a Table (AppKit first responder),
+        // so Space is caught at the AppKit level instead.
+        .background(SpaceKeyHandler { Task { await previewSelection() } })
         // A per-cell `.onTapGesture(count: 2)` swallows the Table's single-click
         // selection. Using the Table's own selection-based context menu handles
         // right-click AND double-click (primaryAction) without breaking clicks.
@@ -350,7 +355,7 @@ struct ArchiveBrowserView: View {
         Divider()
 
         if !isMulti {
-            // Space itself is handled by the container's `onKeyPress`, which does
+            // Space itself is handled by the table's `SpaceKeyHandler`, which does
             // work outside the menu.
             Button("Quick Look") { Task { await preview(primary) } }
             Menu("Open With") {
