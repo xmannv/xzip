@@ -6,18 +6,21 @@
     <description>XZip - Compression App for macOS</description>
     <language>en</language>
     <item>
-      <title>Version 1.0.3 (Build 4)</title>
-      <link>https://github.com/xmannv/xzip/releases/tag/v1.0.3-4</link>
-      <sparkle:version>4</sparkle:version>
+      <title>Version 1.0.3 (Build 6)</title>
+      <link>https://github.com/xmannv/xzip/releases/tag/v1.0.3-6</link>
+      <sparkle:version>6</sparkle:version>
       <sparkle:shortVersionString>1.0.3</sparkle:shortVersionString>
       <description>&lt;p&gt;&lt;h2&gt;What&amp;#x27;s New&lt;/h2&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Browse nested archives in place&lt;/strong&gt; — double-clicking an archive entry (DMG, ZIP, 7Z, TAR.GZ, ISO, …) inside an open archive now extracts it to a scratch location and opens it directly in XZip, matching the folder browser. A small badge marks archive entries in the list, and the context menu gains an &amp;quot;Open&amp;quot; action. Previously such entries fell through to Quick Look, which has no preview for disk images.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;&lt;a href="https://github.com/xmannv/xzip/releases/tag/v1.0.3-4"&gt;View details on GitHub&lt;/a&gt;&lt;/p&gt;</description>
-      <pubDate>Sat, 26 Sep 2026 08:37:31 +0000</pubDate>
+&lt;p&gt;fix(macos): stop crash when a process exits without reading stdin&lt;/p&gt;
+&lt;p&gt;The stdin writer used a FileHandle that the terminal path could close first;&lt;/p&gt;
+&lt;p&gt;FileHandle.write then raised an uncatchable Objective-C exception. The writer&lt;/p&gt;
+&lt;p&gt;now owns a dup&amp;#x27;d descriptor and writes with Darwin.write.&lt;/p&gt;
+&lt;p&gt;Also bump build to 1.0.3 (build 6).&lt;/p&gt;
+&lt;p&gt;Co-Authored-By: Claude Sonnet 5.5 &amp;lt;noreply@anthropic.com&amp;gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href="https://github.com/xmannv/xzip/releases/tag/v1.0.3-6"&gt;View details on GitHub&lt;/a&gt;&lt;/p&gt;</description>
+      <pubDate>Wed, 07 Oct 2026 15:00:40 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-      <enclosure url="https://github.com/xmannv/xzip/releases/download/v1.0.3-4/XZip-1.0.3.dmg" sparkle:version="4" sparkle:shortVersionString="1.0.3" length="12681549" type="application/octet-stream" sparkle:edSignature="X/BE+RHBWj+xyXp8VATXTOk7D/4tzDOnpDHXI1hhnTnWkzwO+vwZ+jHBxervLX4EV5uWSNJEGDVZ2TCY8xUjDQ==" />
+      <enclosure url="https://github.com/xmannv/xzip/releases/download/v1.0.3-6/XZip-1.0.3.dmg" sparkle:version="6" sparkle:shortVersionString="1.0.3" length="12688437" type="application/octet-stream" sparkle:edSignature="Mx8ews+CbL7s+y6x+CuLva6ZQGnOwjRRxVOlCgQGZH2ZHm3V9l3GyNm9qfpOvgUdmIaeVH5eT2RBtw9Lc7GeAw==" />
     </item>
   </channel>
 </rss>
